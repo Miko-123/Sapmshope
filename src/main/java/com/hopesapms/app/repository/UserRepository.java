@@ -1,0 +1,36 @@
+package com.hopesapms.app.repository;
+
+import com.hopesapms.app.model.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Optional;
+
+@Repository
+public interface UserRepository extends JpaRepository<User, Integer> {
+    Optional<User> findByUsernameAndIsDeletedFalse(String username);
+    Optional<User> findByEmailAndIsDeletedFalse(String email);
+    boolean existsByUsernameAndIsDeletedFalse(String username);
+    boolean existsByEmailAndIsDeletedFalse(String email);
+
+    @EntityGraph(attributePaths = {"roles"})
+    Page<User> findByIsDeletedFalse(Pageable pageable);
+
+    @EntityGraph(attributePaths = {"roles"})
+    @Query("SELECT u FROM User u JOIN u.roles r WHERE r.name = :roleName AND u.isDeleted = false")
+    Page<User> findByRoleName(String roleName, Pageable pageable);
+
+    @Query("SELECT COUNT(u) FROM User u WHERE u.isDeleted = false AND SIZE(u.roles) > 0")
+    Long countActiveUsersWithRoles();
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE User u SET u.isDeleted = true WHERE u.id IN :ids")
+    void softDeleteByIds(Iterable<Integer> ids);
+}
