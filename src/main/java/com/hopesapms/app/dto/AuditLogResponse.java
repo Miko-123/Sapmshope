@@ -6,11 +6,11 @@ import java.time.LocalDateTime;
 
 @Data
 public class AuditLogResponse {
-    private Integer id;
+    private Long id;
     private String username;
     private String actionType;
     private String entityType;
-    private Integer entityId;
+    private Long entityId;
     private LocalDateTime timestamp;
     private String oldValue;
     private String newValue;

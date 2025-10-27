@@ -17,8 +17,8 @@ import java.util.Set;
 
 @Entity
 @Table(name = "users", indexes = {
-    @Index(columnList = "email"),
-    @Index(columnList = "username")
+        @Index(columnList = "email"),
+        @Index(columnList = "username")
 })
 @Getter
 @Setter
@@ -31,12 +31,10 @@ public class User implements UserDetails {
     private Integer id;
 
     @Column(length = 100, unique = true, nullable = false)
-    @NotBlank
     @Size(max = 100)
     private String username;
 
     @Column(length = 255, nullable = false)
-    @NotBlank
     @Size(max = 255)
     private String password;
 
@@ -63,9 +61,8 @@ public class User implements UserDetails {
 
     @Enumerated(EnumType.STRING)
     @Column(length = 10, nullable = false)
-    @NotBlank
-    @Size(max = 10)
-    private Gender gender;
+    @Builder.Default
+    private Gender gender = Gender.UNSPECIFIED;
 
     @Column(name = "phone_number", length = 15)
     @Size(max = 15)
@@ -88,12 +85,11 @@ public class User implements UserDetails {
     private LocalDateTime updatedAt;
 
     @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-        name = "users_roles",
-        joinColumns = @JoinColumn(name = "user_id"),
-        inverseJoinColumns = @JoinColumn(name = "role_id")
-    )
+    @JoinTable(name = "users_roles", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "role_id"))
     private Set<Role> roles;
+
+    @OneToOne(mappedBy = "departmentHead", fetch = FetchType.LAZY)
+    private Department department;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -121,10 +117,14 @@ public class User implements UserDetails {
     }
 
     public enum Gender {
-        MALE, FEMALE;
+        MALE, FEMALE, UNSPECIFIED;
 
         public static Gender fromString(String value) {
-            return Gender.valueOf(value.toUpperCase());
+            try {
+                return Gender.valueOf(value.toUpperCase());
+            } catch (Exception e) {
+                return UNSPECIFIED;
+            }
         }
     }
 }

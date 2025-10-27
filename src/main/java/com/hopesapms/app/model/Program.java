@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 public class Program {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    private Long id;
 
     @Column(length = 255, nullable = false)
     private String name;
@@ -40,10 +40,8 @@ public class Program {
     private boolean isDeleted = false;
 
     @CreationTimestamp
-    @Column(name = "created_at")
     private LocalDateTime createdAt;
 
     @UpdateTimestamp
-    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 }

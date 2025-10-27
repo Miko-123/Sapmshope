@@ -19,11 +19,10 @@ import java.time.LocalDateTime;
 public class AuditLog {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    @NotNull
+    @JoinColumn(name = "user_id", nullable = true)
     private User user;
 
     @Column(name = "action_type", length = 50, nullable = false)
@@ -38,7 +37,7 @@ public class AuditLog {
 
     @Column(name = "entity_id", nullable = false)
     @NotNull
-    private Integer entityId;
+    private Long entityId;
 
     @CreationTimestamp
     @Column(name = "timestamp", nullable = false, updatable = false)

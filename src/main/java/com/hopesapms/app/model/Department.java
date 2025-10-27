@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 public class Department {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    private Long id;
 
     @Column(length = 255, nullable = false, unique = true)
     private String name;
@@ -33,6 +33,10 @@ public class Department {
 
     @Column(name = "office_location", length = 255)
     private String officeLocation;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "department_head_id", referencedColumnName = "id")
+    private User departmentHead;
 
     @Column(name = "is_deleted", nullable = false)
     @Builder.Default

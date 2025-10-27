@@ -17,8 +17,8 @@ public class StudentResponse {
     private String gender;
     private String phoneNumber;
     private String profilePictureUrl;
-    private Integer programId;
-    private Integer departmentId;
+    private Long programId;
+    private Long departmentId;
     private Integer yearLevel;
     private LocalDate enrollmentDate;
     private String status;

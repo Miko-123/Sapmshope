@@ -1,58 +1,42 @@
 package com.hopesapms.app.service;
 
-import com.hopesapms.app.model.User;
-import com.hopesapms.app.model.VerificationCode;
-import com.hopesapms.app.repository.UserRepository;
-import com.hopesapms.app.repository.VerificationCodeRepository;
-import jakarta.transaction.Transactional;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.Random;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
-@RequiredArgsConstructor
+@Slf4j
 public class VerificationService {
-    private final VerificationCodeRepository codeRepository;
-    private final UserRepository userRepository;
-    private final EmailService emailService;
 
-    private final Random random = new Random();
+    private final Map<String, LocalDateTime> verifiedEmailCache = new ConcurrentHashMap<>();
 
-    @Transactional
-    public void sendCode(String email) {
-        User user = userRepository.findByEmailAndIsDeletedFalse(email.trim()).orElseThrow(() -> new IllegalArgumentException("No user found with email " + email));
+    private static final int EXPIRATION_MINUTES = 10;
 
-        String code = String.format("%06d", random.nextInt(999999));
-
-        VerificationCode verificationCode = VerificationCode.builder()
-        .user(user)
-        .code(code)
-        .expiryTime(LocalDateTime.now().plusMinutes(10))
-        .used(false)
-        .build();
-
-        codeRepository.save(verificationCode);
-
-        emailService.sendVerificationEmail(user.getEmail(), code);
+    public void cacheVerifiedEmail(String email) {
+        LocalDateTime expiration = LocalDateTime.now().plusMinutes(EXPIRATION_MINUTES);
+        verifiedEmailCache.put(email, expiration);
+        log.info("Cached verified email {} for profile completion. Expires at: {}", email, expiration);
     }
 
-    @Transactional
-    public boolean verifycode(String email, String code){
-        User user = userRepository.findByEmailAndIsDeletedFalse(email)
-        .orElseThrow(() -> new IllegalArgumentException("No user found with email " + email));
-        
-        VerificationCode verificationCode = codeRepository.findByUserAndCodeAndUsedFalse(user, code)
-        .orElseThrow(() -> new IllegalArgumentException("Invalid or already used code"));
+    public boolean validateVerifiedEmail(String email) {
+        LocalDateTime expiration = verifiedEmailCache.get(email);
 
-        if (verificationCode.getExpiryTime().isBefore(LocalDateTime.now())) {
-            throw new IllegalArgumentException("Code exprired");
+        if (expiration == null) {
+            log.warn("No verified email cache found for {}", email);
+            return false;
         }
 
-        verificationCode.setUsed(true);
-        codeRepository.save(verificationCode);
-        
+        if (expiration.isBefore(LocalDateTime.now())) {
+            log.warn("Verified email cache expired for {}", email);
+            verifiedEmailCache.remove(email);
+            return false;
+        }
+
+        verifiedEmailCache.remove(email);
+        log.info("Successfully validated and consumed verified email cache for {}", email);
         return true;
     }
 }

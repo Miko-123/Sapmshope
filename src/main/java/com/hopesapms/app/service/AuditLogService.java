@@ -16,22 +16,24 @@ public class AuditLogService {
     private final AuditLogRepository auditLogRepository;
     private final UserRepository userRepository;
 
-    public void log(String actionType, String entityType, Integer entityId, String oldValue, String newValue) {
+    public void log(String actionType, String entityType, Long entityId, String oldValue, String newValue) {
 
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findByUsernameAndIsDeletedFalse(username).orElse(null);
+
+        if(entityId == null){
+            entityId = 0L; 
+        }
 
         AuditLog log = AuditLog.builder()
                 .user(user)
                 .actionType(actionType)
                 .entityType(entityType)
-                .entityId(entityId)
+                .entityId(entityId) 
                 .oldValue(oldValue)
                 .newValue(newValue)
                 .build();
 
         auditLogRepository.save(log);
-
     }
-
 }

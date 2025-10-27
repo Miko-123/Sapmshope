@@ -1,20 +1,18 @@
 package com.hopesapms.app.repository;
 
 import com.hopesapms.app.model.AcademicSemester;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+import java.util.Optional;
+
 @Repository
-public interface AcademicSemesterRepository extends JpaRepository<AcademicSemester, Integer> {
-    @Query("SELECT a FROM AcademicSemester a WHERE a.isDeleted = false")
-    Page<AcademicSemester> findAllActive(Pageable pageable);
+public interface AcademicSemesterRepository extends JpaRepository<AcademicSemester, Long> {
 
-    @Query("SELECT a FROM AcademicSemester a WHERE a.isCurrent = true AND a.isDeleted = false")
-    AcademicSemester findCurrentSemester();
+    List<AcademicSemester> findByIsDeletedFalse();
 
-    @Query("SELECT COUNT(a) FROM AcademicSemester a WHERE a.isDeleted = false AND a.endDate < CURRENT_DATE")
-    Long countPastSemesters();
+    Optional<AcademicSemester> findByIdAndIsDeletedFalse(Long id);
+
+    boolean existsByNameAndIsDeletedFalse(String name);
 }

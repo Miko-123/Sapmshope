@@ -18,16 +18,16 @@ import java.time.LocalDateTime;
 public class AcademicSemester {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    private Long id; 
 
-    @Column(length = 255, nullable = false)
-    private String name;
+    @Column(length = 255, nullable = false, unique = true)
+    private String name; 
 
     @Column(nullable = false)
     private Integer year;
 
     @Column(length = 50, nullable = false)
-    private String type;  
+    private String type; 
     
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
@@ -50,4 +50,16 @@ public class AcademicSemester {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    // Added for cleaner audit logs
+    @Override
+    public String toString() {
+        return "AcademicSemester{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", year=" + year +
+                ", type='" + type + '\'' +
+                ", isCurrent=" + isCurrent +
+                '}';
+    }
 }
