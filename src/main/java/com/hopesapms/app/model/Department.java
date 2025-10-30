@@ -22,7 +22,7 @@ public class Department {
     @Column(length = 255, nullable = false, unique = true)
     private String name;
 
-    @Column(length = 50, nullable = false, unique = true)
+    @Column(length = 50, unique = true) 
     private String code;
 
     @Column(name = "contact_email", length = 255)

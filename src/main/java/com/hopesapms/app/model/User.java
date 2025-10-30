@@ -34,7 +34,7 @@ public class User implements UserDetails {
     @Size(max = 100)
     private String username;
 
-    @Column(length = 255, nullable = false)
+    @Column(length = 255)
     @Size(max = 255)
     private String password;
 
@@ -54,13 +54,13 @@ public class User implements UserDetails {
     @Size(max = 30)
     private String middleName;
 
-    @Column(name = "last_name", length = 30, nullable = false)
+    @Column(name = "last_name", length = 30)
     @NotBlank
     @Size(max = 30)
     private String lastName;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 10, nullable = false)
+    @Column(length = 20)
     @Builder.Default
     private Gender gender = Gender.UNSPECIFIED;
 
@@ -113,7 +113,7 @@ public class User implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return !isDeleted && password != null;
+        return !isDeleted;
     }
 
     public enum Gender {

@@ -40,8 +40,6 @@ public class DepartmentService {
 
         Department department = new Department();
         department.setName(dto.getName());
-        // All other fields (code, email, etc.) will be null
-        // **This requires your database schema to allow NULL for the code column**
 
         Department savedDept = departmentRepository.save(department);
         
