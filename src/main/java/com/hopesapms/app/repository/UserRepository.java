@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.List;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, Integer> {
@@ -21,6 +22,12 @@ public interface UserRepository extends JpaRepository<User, Integer> {
 
     @EntityGraph(attributePaths = {"roles"})
     Page<User> findByIsDeletedFalse(Pageable pageable);
+
+    Optional<User> findByIdAndIsDeletedFalse(Integer id);
+
+    @Query("SELECT u FROM User u JOIN u.roles r " +
+           "WHERE r.name = :roleName AND u.department IS NULL AND u.isDeleted = false")
+    List<User> findUnassignedByRole(String roleName);
 
     @EntityGraph(attributePaths = {"roles"})
     @Query("SELECT u FROM User u JOIN u.roles r WHERE r.name = :roleName AND u.isDeleted = false")

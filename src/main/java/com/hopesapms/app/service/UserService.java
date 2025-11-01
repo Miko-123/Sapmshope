@@ -2,7 +2,7 @@ package com.hopesapms.app.service;
 
 import com.hopesapms.app.dto.CreateUserRequest;
 import com.hopesapms.app.dto.UpdateUserRequest;
-import com.hopesapms.app.dto.UserResponse;
+import com.hopesapms.app.dto.UserResponseDTO;
 import com.hopesapms.app.dto.UpdateUserPrivilegesRequest;
 import com.hopesapms.app.model.Role;
 
@@ -39,7 +39,7 @@ public class UserService {
     private static final Pattern PASSWORD_PATTERN = Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]{8,}$");
 
     @Transactional
-    public UserResponse createUser(CreateUserRequest request) {
+    public UserResponseDTO createUser(CreateUserRequest request) {
         if (userRepository.existsByEmailAndIsDeletedFalse(request.getEmail())) {
             throw new IllegalArgumentException("Email already exists");
         }
@@ -80,7 +80,7 @@ public class UserService {
     }
 
     @Transactional
-    public UserResponse updateUser(Integer userId, UpdateUserRequest request) {
+    public UserResponseDTO updateUser(Integer userId, UpdateUserRequest request) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
@@ -119,25 +119,25 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
-    public UserResponse getUserById(Integer userId) {
+    public UserResponseDTO getUserById(Integer userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
         return mapToResponse(user);
     }
 
     @Transactional(readOnly = true)
-    public Page<UserResponse> getAllActiveUsers(Pageable pageable) {
+    public Page<UserResponseDTO> getAllActiveUsers(Pageable pageable) {
         return userRepository.findByIsDeletedFalse(pageable).map(this::mapToResponse);
     }
 
     @Transactional(readOnly = true)
-    public Page<UserResponse> getUsersByRole(String roleName, Pageable pageable) {
+    public Page<UserResponseDTO> getUsersByRole(String roleName, Pageable pageable) {
         return userRepository.findByRoleName(roleName, pageable)
                 .map(this::mapToResponse);
     }
 
     @Transactional
-    public UserResponse updateUserPrivileges(Integer userId, UpdateUserPrivilegesRequest request) {
+    public UserResponseDTO updateUserPrivileges(Integer userId, UpdateUserPrivilegesRequest request) {
         User user = userRepository.findById(userId).orElseThrow(() -> new EntityNotFoundException("User not found with id: " + userId));
 
         String oldRoles = user.getRoles().stream()
@@ -164,8 +164,8 @@ public class UserService {
         return mapToResponse(updatedUser);
     }
 
-    private UserResponse mapToResponse(User user) {
-        UserResponse r = new UserResponse();
+    private UserResponseDTO mapToResponse(User user) {
+        UserResponseDTO r = new UserResponseDTO();
         r.setId(user.getId());
         r.setUsername(user.getUsername());
         r.setEmail(user.getEmail());
@@ -177,7 +177,7 @@ public class UserService {
         r.setProfilePictureUrl(user.getProfilePictureUrl());
         r.setRoles(user.getRoles().stream()
                 .map(role -> {
-                    UserResponse.RoleResponse rr = new UserResponse.RoleResponse();
+                    UserResponseDTO.RoleResponse rr = new UserResponseDTO.RoleResponse();
                     rr.setId(role.getId());
                     rr.setName(role.getName());
                     return rr;

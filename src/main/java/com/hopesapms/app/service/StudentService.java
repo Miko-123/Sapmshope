@@ -97,7 +97,7 @@ public class StudentService {
 
     // 3️⃣ Verify OTP
     @Transactional
-    public UserResponse verifyStudent(String email, String otp) {
+    public UserResponseDTO verifyStudent(String email, String otp) {
         String cachedOtp = otpCache.get(email);
         if (cachedOtp == null || !cachedOtp.equals(otp))
             throw new IllegalArgumentException("Invalid or expired verification code");
@@ -177,8 +177,8 @@ public class StudentService {
         return r;
     }
 
-    private UserResponse mapToUserResponse(User u) {
-        UserResponse r = new UserResponse();
+    private UserResponseDTO mapToUserResponse(User u) {
+        UserResponseDTO r = new UserResponseDTO();
         r.setId(u.getId());
         r.setUsername(u.getUsername());
         r.setEmail(u.getEmail());
@@ -186,7 +186,7 @@ public class StudentService {
         r.setLastName(u.getLastName());
         r.setRoles(u.getRoles().stream()
                 .map(role -> {
-                    UserResponse.RoleResponse rr = new UserResponse.RoleResponse();
+                    UserResponseDTO.RoleResponse rr = new UserResponseDTO.RoleResponse();
                     rr.setId(role.getId());
                     rr.setName(role.getName());
                     return rr;

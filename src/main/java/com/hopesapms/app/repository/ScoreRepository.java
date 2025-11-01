@@ -7,8 +7,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional; // Import this
+
 @Repository
 public interface ScoreRepository extends JpaRepository<Score, Integer> {
+
+    // --- ADD THIS METHOD ---
+    // Finds a specific score for one student on one assessment
+    Optional<Score> findByEnrollment_IdAndAssessment_IdAndIsDeletedFalse(Integer enrollmentId, Integer assessmentId);
+
+    // Your existing methods are great
     @Query("SELECT s FROM Score s WHERE s.isDeleted = false")
     Page<Score> findAllActive(Pageable pageable);
 

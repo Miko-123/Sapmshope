@@ -1,9 +1,10 @@
 package com.hopesapms.app.service;
 
-import com.hopesapms.app.dto.AcademicSemesterDTO;
+import com.hopesapms.app.dto.AcademicSemesterRequestDTO;
+import com.hopesapms.app.dto.AcademicSemesterResponseDTO;
+import com.hopesapms.app.exception.ResourceNotFoundException;
 import com.hopesapms.app.model.AcademicSemester;
 import com.hopesapms.app.repository.AcademicSemesterRepository;
-import com.hopesapms.app.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityExistsException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,101 +21,100 @@ public class AcademicSemesterService {
     private final AuditLogService auditLogService;
 
     @Transactional
-    public AcademicSemesterDTO createSemester(AcademicSemesterDTO dto) {
-        // Business Logic: Check for uniqueness
+    public AcademicSemesterResponseDTO createSemester(AcademicSemesterRequestDTO dto) {
         if (semesterRepository.existsByNameAndIsDeletedFalse(dto.getName())) {
-            throw new EntityExistsException("A semester with name '" + dto.getName() + "' already exists.");
-        }
-        
-        // Business Logic: Ensure end date is after start date
-        if (dto.getStartDate().isAfter(dto.getEndDate())) {
-            throw new IllegalArgumentException("Semester end date must be after the start date.");
+            throw new EntityExistsException("An academic semester with this name already exists.");
         }
 
-        AcademicSemester semester = new AcademicSemester();
-        mapDtoToEntity(dto, semester);
+        AcademicSemester semester = AcademicSemester.builder()
+                .name(dto.getName())
+                .year(dto.getYear())
+                .type(dto.getType())
+                .startDate(dto.getStartDate())
+                .endDate(dto.getEndDate())
+                .isCurrent(false) // New semesters are never current by default
+                .build();
 
-        AcademicSemester savedSemester = semesterRepository.save(semester);
-        
-        // Postcondition: Log the action (savedSemester.getId() is now a Long)
-        auditLogService.log("CREATE_SEMESTER", "AcademicSemester", savedSemester.getId(), null, savedSemester.toString());
-        
-        return mapEntityToDto(savedSemester);
+        AcademicSemester saved = semesterRepository.save(semester);
+        auditLogService.log("CREATE_SEMESTER", "AcademicSemester", saved.getId(), null, saved.toString());
+        return mapToResponseDTO(saved);
     }
 
     @Transactional(readOnly = true)
-    public List<AcademicSemesterDTO> getAllSemesters() {
-        return semesterRepository.findByIsDeletedFalse()
-                .stream()
-                .map(this::mapEntityToDto)
+    public List<AcademicSemesterResponseDTO> getAllSemesters() {
+        return semesterRepository.findByIsDeletedFalse().stream()
+                .map(this::mapToResponseDTO)
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
-    public AcademicSemesterDTO getSemesterById(Long id) {
+    public AcademicSemesterResponseDTO getSemesterById(Long id) {
         AcademicSemester semester = semesterRepository.findByIdAndIsDeletedFalse(id)
-                .orElseThrow(() -> new ResourceNotFoundException("AcademicSemester not found with id: " + id));
-        return mapEntityToDto(semester);
+                .orElseThrow(() -> new ResourceNotFoundException("Academic Semester not found"));
+        return mapToResponseDTO(semester);
     }
 
     @Transactional
-    public AcademicSemesterDTO updateSemester(Long id, AcademicSemesterDTO dto) {
+    public AcademicSemesterResponseDTO updateSemester(Long id, AcademicSemesterRequestDTO dto) {
         AcademicSemester semester = semesterRepository.findByIdAndIsDeletedFalse(id)
-                .orElseThrow(() -> new ResourceNotFoundException("AcademicSemester not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Academic Semester not found"));
 
-        // Business Logic: Ensure end date is after start date
-        if (dto.getStartDate().isAfter(dto.getEndDate())) {
-            throw new IllegalArgumentException("Semester end date must be after the start date.");
-        }
-        
         String oldData = semester.toString();
-        mapDtoToEntity(dto, semester);
-        
-        AcademicSemester updatedSemester = semesterRepository.save(semester);
-        
-        // Postcondition: Log the update
-        auditLogService.log("UPDATE_SEMESTER", "AcademicSemester", updatedSemester.getId(), oldData, updatedSemester.toString());
-        
-        return mapEntityToDto(updatedSemester);
+        semester.setName(dto.getName());
+        semester.setYear(dto.getYear());
+        semester.setType(dto.getType());
+        semester.setStartDate(dto.getStartDate());
+        semester.setEndDate(dto.getEndDate());
+
+        AcademicSemester updated = semesterRepository.save(semester);
+        auditLogService.log("UPDATE_SEMESTER", "AcademicSemester", updated.getId(), oldData, updated.toString());
+        return mapToResponseDTO(updated);
     }
 
     @Transactional
     public void deleteSemester(Long id) {
         AcademicSemester semester = semesterRepository.findByIdAndIsDeletedFalse(id)
-                .orElseThrow(() -> new ResourceNotFoundException("AcademicSemester not found with id: " + id));
-        
+                .orElseThrow(() -> new ResourceNotFoundException("Academic Semester not found"));
+
         String oldData = semester.toString();
-        
-        // Soft delete
         semester.setDeleted(true);
         semesterRepository.save(semester);
-        
-        // Postcondition: Log the deletion
-        auditLogService.log("DELETE_SEMESTER", "AcademicSemester", semester.getId(), oldData, "DELETED");
+        auditLogService.log("DELETE_SEMESTER", "AcademicSemester", id, oldData, "DELETED");
     }
 
-    // --- Helper Methods ---
+    @Transactional
+    public AcademicSemesterResponseDTO setCurrentSemester(Long id) {
+        // 1. Find the new semester to make current
+        AcademicSemester newCurrent = semesterRepository.findByIdAndIsDeletedFalse(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Academic Semester not found"));
 
-    private AcademicSemesterDTO mapEntityToDto(AcademicSemester entity) {
-        AcademicSemesterDTO dto = new AcademicSemesterDTO();
+        // 2. Find and unset the old current semester (if one exists)
+        semesterRepository.findByIsDeletedFalse().stream()
+                .filter(AcademicSemester::isCurrent)
+                .findFirst()
+                .ifPresent(oldCurrent -> {
+                    oldCurrent.setCurrent(false);
+                    semesterRepository.save(oldCurrent);
+                });
+
+        // 3. Set the new semester as current
+        newCurrent.setCurrent(true);
+        AcademicSemester saved = semesterRepository.save(newCurrent);
+        
+        auditLogService.log("SET_CURRENT_SEMESTER", "AcademicSemester", saved.getId(), null, saved.toString());
+        return mapToResponseDTO(saved);
+    }
+
+    private AcademicSemesterResponseDTO mapToResponseDTO(AcademicSemester entity) {
+        AcademicSemesterResponseDTO dto = new AcademicSemesterResponseDTO();
         dto.setId(entity.getId());
         dto.setName(entity.getName());
         dto.setYear(entity.getYear());
         dto.setType(entity.getType());
         dto.setStartDate(entity.getStartDate());
         dto.setEndDate(entity.getEndDate());
-        dto.setIsCurrent(entity.isCurrent()); // Use isCurrent() for boolean
+        dto.setCurrent(entity.isCurrent());
         dto.setCreatedAt(entity.getCreatedAt());
-        dto.setUpdatedAt(entity.getUpdatedAt());
         return dto;
-    }
-
-    private void mapDtoToEntity(AcademicSemesterDTO dto, AcademicSemester entity) {
-        entity.setName(dto.getName());
-        entity.setYear(dto.getYear());
-        entity.setType(dto.getType());
-        entity.setStartDate(dto.getStartDate());
-        entity.setEndDate(dto.getEndDate());
-        entity.setCurrent(dto.getIsCurrent() != null ? dto.getIsCurrent() : false);
     }
 }

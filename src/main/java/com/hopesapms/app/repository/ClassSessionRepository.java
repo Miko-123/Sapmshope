@@ -7,8 +7,23 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
+import java.util.Optional;
+import java.util.List;
+
 @Repository
 public interface ClassSessionRepository extends JpaRepository<ClassSession, Integer> {
+    
+    Optional<ClassSession> findByIdAndIsDeletedFalse(Integer id);
+    
+    @Query("SELECT cs FROM ClassSession cs " +
+           "JOIN FETCH cs.course c " +
+           "JOIN FETCH cs.scheduledInstructor i " +
+           "WHERE c.id IN :courseIds AND cs.isDeleted = false " +
+           "AND cs.sessionDate >= :startDate " +
+           "ORDER BY cs.sessionDate, cs.sessionTime")
+    List<ClassSession> findByCourseIdInAndDateAfter(List<Integer> courseIds, LocalDate startDate);
+
     @Query("SELECT cs FROM ClassSession cs WHERE cs.isDeleted = false")
     Page<ClassSession> findAllActive(Pageable pageable);
 

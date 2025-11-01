@@ -88,7 +88,8 @@ public class User implements UserDetails {
     @JoinTable(name = "users_roles", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "role_id"))
     private Set<Role> roles;
 
-    @OneToOne(mappedBy = "departmentHead", fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY) 
+    @JoinColumn(name = "department_id") 
     private Department department;
 
     @Override

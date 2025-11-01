@@ -20,7 +20,7 @@ import java.util.Set;
 public class Course {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    private Integer id; // <-- Kept as Integer (Fixes errors)
 
     @Column(length = 255, nullable = false)
     private String title;
@@ -32,18 +32,23 @@ public class Course {
     private String description;
 
     @Column(nullable = false)
-    private Integer credits;
+    private Double credits;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_id", nullable = false)
-    private Department department;
+    private Department department; 
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "academic_semester_id", nullable = false)
+    @JoinColumn(name = "program_id") 
+    private Program program;
+
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "academic_semester_id") 
     private AcademicSemester academicSemester;
 
-    @Column(length = 50, nullable = false)
-    private String status;  
+    @Column(length = 50) 
+    private String status;
 
     @Column(name = "start_date")
     private LocalDate startDate;
@@ -64,8 +69,10 @@ public class Course {
     private LocalDateTime updatedAt;
 
     @OneToMany(mappedBy = "course", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @Builder.Default
     private Set<CourseObjective> objectives = new HashSet<>();
 
     @OneToMany(mappedBy = "course", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @Builder.Default
     private Set<Assessment> assessments = new HashSet<>();
 }

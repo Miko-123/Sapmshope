@@ -1,8 +1,10 @@
 package com.hopesapms.app.service;
 
+import com.hopesapms.app.dto.AssignStaffRequestDTO;
 import com.hopesapms.app.dto.CreateDepartmentRequest;
 import com.hopesapms.app.dto.DepartmentResponseDTO;
 import com.hopesapms.app.dto.UpdateDepartmentDetailsRequest;
+import com.hopesapms.app.dto.UserResponseDTO; 
 import com.hopesapms.app.exception.ResourceNotFoundException;
 import com.hopesapms.app.model.Department;
 import com.hopesapms.app.model.User;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set; 
 import java.util.stream.Collectors;
 
 @Service
@@ -24,37 +27,27 @@ import java.util.stream.Collectors;
 public class DepartmentService {
 
     private final DepartmentRepository departmentRepository;
-    private final UserRepository userRepository; // To find the logged-in user
+    private final UserRepository userRepository; 
     private final AuditLogService auditLogService;
 
-    /**
-     * Called by SYSTEM_ADMIN.
-     * Creates a new Department with *only* its name.
-     */
+
     @Transactional
     public DepartmentResponseDTO createDepartment(CreateDepartmentRequest dto) {
-        // Business Logic: Check for uniqueness
         if (departmentRepository.existsByNameAndIsDeletedFalse(dto.getName())) {
             throw new EntityExistsException("A department with name '" + dto.getName() + "' already exists.");
         }
-
         Department department = new Department();
         department.setName(dto.getName());
-
         Department savedDept = departmentRepository.save(department);
-        
         auditLogService.log("CREATE_DEPARTMENT", "Department", savedDept.getId(), null, savedDept.toString());
-        
         return mapEntityToDto(savedDept);
     }
 
     @Transactional
     public DepartmentResponseDTO updateMyDepartmentDetails(UpdateDepartmentDetailsRequest dto, Authentication authentication) {
-
         User deptHead = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
-
-       
+        
         Department department = deptHead.getDepartment();
         if (department == null) {
             throw new AccessDeniedException("You are not assigned to a department.");
@@ -66,20 +59,15 @@ public class DepartmentService {
         }
 
         String oldData = department.toString();
-
         department.setCode(dto.getCode());
         department.setContactEmail(dto.getContactEmail());
         department.setContactPhone(dto.getContactPhone());
         department.setOfficeLocation(dto.getOfficeLocation());
-        
         Department updatedDept = departmentRepository.save(department);
         
         auditLogService.log("UPDATE_DEPT_DETAILS", "Department", updatedDept.getId(), oldData, updatedDept.toString());
-        
         return mapEntityToDto(updatedDept);
     }
-
-   
 
     @Transactional(readOnly = true)
     public List<DepartmentResponseDTO> getAllDepartments() {
@@ -108,6 +96,98 @@ public class DepartmentService {
         auditLogService.log("DELETE_DEPARTMENT", "Department", dept.getId(), oldData, "DELETED");
     }
 
+    // --- NEW METHODS (FROM PREVIOUS STEP) ---
+
+    @Transactional(readOnly = true)
+    public List<UserResponseDTO> getUnassignedInstructors() {
+        return userRepository.findUnassignedByRole("INSTRUCTOR")
+                .stream()
+                .map(this::mapToUserResponseDTO) 
+                .collect(Collectors.toList());
+    }
+
+   @Transactional
+    public UserResponseDTO assignStaffToDepartment(Long departmentId, AssignStaffRequestDTO dto, Authentication authentication) {
+        
+        // 1. Get the Department
+        Department department = departmentRepository.findByIdAndIsDeletedFalse(departmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Department not found"));
+
+        // 2. Get the logged-in user
+        User loggedInUser = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
+                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
+
+        // --- START OF MODIFICATION ---
+        
+        // 3. Check if user is SYSTEM_ADMIN
+        boolean isSystemAdmin = loggedInUser.getRoles().stream()
+                .anyMatch(role -> "SYSTEM_ADMIN".equals(role.getName()));
+
+        // 4. If NOT Admin, check if they are the correct Department Head
+        if (!isSystemAdmin) {
+            // This is your original authorization logic, now nested
+            boolean isDeptHead = loggedInUser.getRoles().stream()
+                    .anyMatch(r -> r.getName().equals("DEPARTMENT_HEAD"));
+
+            if (!isDeptHead) {
+                throw new AccessDeniedException("You are not a Department Head.");
+            }
+            
+            if (loggedInUser.getDepartment() == null || !loggedInUser.getDepartment().getId().equals(departmentId)) {
+                throw new AccessDeniedException("You are not the head of this department.");
+            }
+        }
+        // --- END OF MODIFICATION ---
+        
+        // 5. Get the target user (the Instructor or Dept Head to be assigned)
+        User staffToAssign = userRepository.findByIdAndIsDeletedFalse(dto.getUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User to assign not found with id: " + dto.getUserId()));
+
+        // 6. Business Logic: Check if they are truly unassigned
+        if (staffToAssign.getDepartment() != null) {
+            throw new IllegalArgumentException("This user is already assigned to department: " + staffToAssign.getDepartment().getName());
+        }
+
+        // 7. Assign and Save
+        String oldData = staffToAssign.toString();
+        staffToAssign.setDepartment(department);
+        User savedStaff = userRepository.save(staffToAssign);
+        
+        auditLogService.log("ASSIGN_STAFF", "User", savedStaff.getId().longValue(), oldData, savedStaff.toString());
+
+        return mapToUserResponseDTO(savedStaff);
+    }
+    
+    // --- HELPER METHODS ---
+
+    private UserResponseDTO mapToUserResponseDTO(User user) {
+        UserResponseDTO dto = new UserResponseDTO();
+        dto.setId(user.getId());
+        dto.setUsername(user.getUsername());
+        dto.setEmail(user.getEmail());
+        dto.setFirstName(user.getFirstName());
+        dto.setLastName(user.getLastName());
+        
+        // --- THIS IS THE FIX for Error 1 ---
+        // user.getDepartment().getId() returns a Long
+        // UserResponseDTO.setDepartmentId() expects an Integer
+        dto.setDepartmentId(user.getDepartment() != null ? user.getDepartment().getId().intValue() : null);
+        
+        // Create RoleResponse DTOs
+        // --- This line caused Error 2 (missing import) ---
+        Set<UserResponseDTO.RoleResponse> roles = user.getRoles().stream()
+                .map(role -> {
+                    UserResponseDTO.RoleResponse rr = new UserResponseDTO.RoleResponse();
+                    rr.setId(role.getId());
+                    rr.setName(role.getName());
+                    return rr;
+                })
+                .collect(Collectors.toSet());
+        dto.setRoles(roles);
+        
+        return dto;
+    }
+    
 
     private DepartmentResponseDTO mapEntityToDto(Department entity) {
         DepartmentResponseDTO dto = new DepartmentResponseDTO();

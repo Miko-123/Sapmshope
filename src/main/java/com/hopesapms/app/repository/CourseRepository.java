@@ -11,16 +11,18 @@ import java.util.Optional;
 
 @Repository
 public interface CourseRepository extends JpaRepository<Course, Integer> {
+
+    Optional<Course> findByIdAndIsDeletedFalse(Integer id);
+
     Optional<Course> findByCourseCodeAndIsDeletedFalse(String courseCode);
 
-    @Query("SELECT c FROM Course c WHERE c.isDeleted = false")
-    Page<Course> findAllActive(Pageable pageable);
 
-    @Query("SELECT c FROM Course c JOIN FETCH c.department d WHERE d.id = :departmentId AND c.isDeleted = false")
-    Page<Course> findByDepartmentId(Integer departmentId, Pageable pageable);
+    Page<Course> findByIsDeletedFalse(Pageable pageable);
 
-    @Query("SELECT c FROM Course c JOIN FETCH c.academicSemester a WHERE a.id = :semesterId AND c.isDeleted = false")
-    Page<Course> findByAcademicSemesterId(Integer semesterId, Pageable pageable);
+    Page<Course> findByDepartment_IdAndIsDeletedFalse(Long departmentId, Pageable pageable);
+
+  
+    Page<Course> findByAcademicSemester_IdAndIsDeletedFalse(Long semesterId, Pageable pageable);
 
     @Query("SELECT c FROM Course c JOIN FETCH c.assessments WHERE c.id = :id AND c.isDeleted = false")
     Optional<Course> findByIdWithAssessments(Integer id);

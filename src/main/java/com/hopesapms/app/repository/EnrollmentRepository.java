@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public interface EnrollmentRepository extends JpaRepository<Enrollment, Integer> {
     @Query("SELECT e FROM Enrollment e WHERE e.isDeleted = false")
@@ -27,4 +29,8 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Integer>
 
     @Query("SELECT COUNT(e) FROM Enrollment e WHERE e.course.id = :courseId AND e.isDeleted = false")
     Long countEnrollmentsByCourseId(Integer courseId);
+
+    @Query("SELECT e FROM Enrollment e JOIN FETCH e.student s " +
+           "WHERE e.course.id = :courseId AND e.isDeleted = false AND s.isDeleted = false")
+    List<Enrollment> findByCourseIdAndIsDeletedFalse(Integer courseId);
 }

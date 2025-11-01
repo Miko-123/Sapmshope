@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 import java.util.Set;
 
 @Data
-public class UserResponse {
+public class UserResponseDTO {
     private Integer id;
     private String studentId;
     private String username;

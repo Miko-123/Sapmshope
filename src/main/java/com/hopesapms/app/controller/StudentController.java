@@ -43,14 +43,14 @@ public class StudentController {
 
     // ✅ 2. Send OTP verification (Registrar-triggered or system-triggered)
     @PostMapping("/send-verification")
-    @PreAuthorize("hasAuthority('REGISTRAR')")
+    @PreAuthorize("hasAuthority('STUDENT')")
     public ResponseEntity<String> sendVerification(@RequestParam String email) {
         return ResponseEntity.ok(studentService.sendVerificationCode(email));
     }
 
     // ✅ 3. Student verifies their account
     @PostMapping("/verify")
-    public ResponseEntity<UserResponse> verifyStudent(
+    public ResponseEntity<UserResponseDTO> verifyStudent(
             @RequestParam String email,
             @RequestParam String otp) {
         return ResponseEntity.ok(studentService.verifyStudent(email, otp));

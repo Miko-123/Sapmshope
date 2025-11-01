@@ -7,10 +7,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+import java.util.Optional;
 @Repository
 public interface AssessmentRepository extends JpaRepository<Assessment, Integer> {
     @Query("SELECT a FROM Assessment a WHERE a.isDeleted = false")
     Page<Assessment> findAllActive(Pageable pageable);
+
+    Optional<Assessment> findByIdAndIsDeletedFalse(Integer id);
+
+    List<Assessment> findByCourse_IdAndIsDeletedFalse(Integer courseId);
 
     @Query("SELECT a FROM Assessment a JOIN FETCH a.course WHERE a.course.id = :courseId AND a.isDeleted = false")
     Page<Assessment> findByCourseId(Integer courseId, Pageable pageable);
