@@ -23,7 +23,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AuthService {
     private final AuthenticationManager authenticationManager;
-    private final JwtUtil jwtUtil;
     private final TokenService tokenService;
 
     private final VerificationService verificationService;

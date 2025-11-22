@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -20,26 +21,28 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/scores")
 @RequiredArgsConstructor
-@Tag(name = "Score Management (Instructor)", description = "APIs for instructors to manage student scores (UC-008)")
+@Tag(name = "Score Management", description = "APIs for instructors to enter grades and students to view them")
 public class ScoreController {
 
     private final ScoreService scoreService;
 
-    @PostMapping("/single")
-    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'INSTRUCTOR')")
+    @PostMapping
+    @PreAuthorize("hasAnyAuthority('INSTRUCTOR', 'DEPARTMENT_HEAD', 'SYSTEM_ADMIN')")
     @Operation(summary = "Enter or update a single score for a student")
     public ResponseEntity<ScoreResponseDTO> enterScore(
-            @Valid @RequestBody ScoreRequestDTO dto, Authentication authentication) {
+            @Valid @RequestBody ScoreRequestDTO dto, 
+            Authentication authentication) {
         
         ScoreResponseDTO savedScore = scoreService.enterScore(dto, authentication);
-        return ResponseEntity.ok(savedScore);
+        return new ResponseEntity<>(savedScore, HttpStatus.CREATED);
     }
 
     @PostMapping("/bulk")
-    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'INSTRUCTOR')")
-    @Operation(summary = "Enter or update scores for multiple students on one assessment")
+    @PreAuthorize("hasAnyAuthority('INSTRUCTOR', 'DEPARTMENT_HEAD', 'SYSTEM_ADMIN')")
+    @Operation(summary = "Bulk upload scores for a single assessment")
     public ResponseEntity<BulkUploadResponse> bulkEnterScores(
-            @Valid @RequestBody BulkScoreRequestDTO bulkDto, Authentication authentication) {
+            @Valid @RequestBody BulkScoreRequestDTO bulkDto, 
+            Authentication authentication) {
         
         BulkUploadResponse response = scoreService.bulkEnterScores(bulkDto, authentication);
         return ResponseEntity.ok(response);
@@ -47,9 +50,10 @@ public class ScoreController {
 
     @GetMapping("/my-scores/{courseId}")
     @PreAuthorize("hasAuthority('STUDENT')")
-    @Operation(summary = "Get my scores for a specific course (UC-011)")
+    @Operation(summary = "Get all my scores for a specific course")
     public ResponseEntity<List<StudentScoreDTO>> getMyScoresForCourse(
-            @PathVariable Integer courseId, Authentication authentication) {
+            @PathVariable Integer courseId, 
+            Authentication authentication) {
         
         List<StudentScoreDTO> scores = scoreService.getMyScoresForCourse(courseId, authentication);
         return ResponseEntity.ok(scores);

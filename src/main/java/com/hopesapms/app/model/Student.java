@@ -10,8 +10,8 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "students", indexes = {
-    @Index(columnList = "user_id"),
-    @Index(columnList = "student_id")
+        @Index(columnList = "user_id"),
+        @Index(columnList = "student_id")
 })
 @Getter
 @Setter
@@ -46,6 +46,10 @@ public class Student {
 
     @Column(length = 30, nullable = false)
     private String status;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "section_id")
+    private Section section;
 
     @Column(name = "is_deleted", nullable = false)
     @Builder.Default

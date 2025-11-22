@@ -34,5 +34,8 @@ public class RegisterStudentRequest {
     @NotNull(message = "Year level is required")
     private Integer yearLevel;
 
+    @NotNull(message = "Section ID is required")
+    private Long sectionId;
+
     private LocalDate enrollmentDate = LocalDate.now();
 }

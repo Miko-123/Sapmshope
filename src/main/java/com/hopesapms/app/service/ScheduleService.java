@@ -29,30 +29,25 @@ public class ScheduleService {
     @Transactional(readOnly = true)
     public List<ScheduleDTO> getMySchedule(Authentication authentication) {
         
-        // 1. Get Logged-in User
         User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
 
-        // 2. Get all their *active* enrollments
         List<Enrollment> enrollments = enrollmentRepository.findByStudentId(user.getId(), Pageable.unpaged())
                 .stream()
                 .filter(e -> "ENROLLED".equals(e.getStatus()) || "IN_PROGRESS".equals(e.getStatus()))
                 .collect(Collectors.toList());
 
-        // 3. Extract the Course IDs
         List<Integer> courseIds = enrollments.stream()
-                .map(e -> e.getCourse().getId())
+                .map(e -> e.getCourseOffering().getCourse().getId()) 
                 .distinct()
                 .collect(Collectors.toList());
 
         if (courseIds.isEmpty()) {
-            return List.of(); // Student is not enrolled in anything
+            return List.of(); 
         }
 
-        // 4. Find all future class sessions for those courses
         List<ClassSession> sessions = classSessionRepository.findByCourseIdInAndDateAfter(courseIds, LocalDate.now());
 
-        // 5. Map to DTO
         return sessions.stream()
                 .map(this::mapToScheduleDTO)
                 .collect(Collectors.toList());
@@ -61,7 +56,7 @@ public class ScheduleService {
     private ScheduleDTO mapToScheduleDTO(ClassSession cs) {
         ScheduleDTO dto = new ScheduleDTO();
         dto.setClassSessionId(cs.getId());
-        dto.setCourseCode(cs.getCourse().getCourseCode());
+        dto.setCourseCode(cs.getCourse().getCourseCode()); 
         dto.setCourseTitle(cs.getCourse().getTitle());
         dto.setSessionDate(cs.getSessionDate());
         dto.setSessionTime(cs.getSessionTime());

@@ -21,7 +21,7 @@ public interface StudentAttendanceRepository extends JpaRepository<StudentAttend
     Page<StudentAttendance> findByClassSessionId(Integer classSessionId, Pageable pageable);
 
     @Query("SELECT sa.enrollment.student.id, COUNT(sa) * 100.0 / (SELECT COUNT(cs) FROM ClassSession cs WHERE cs.course.id = c.id AND cs.isDeleted = false) AS attendancePercentage " +
-           "FROM StudentAttendance sa JOIN sa.enrollment e JOIN e.course c JOIN sa.classSession cs " +
+           "FROM StudentAttendance sa JOIN sa.enrollment e JOIN e.courseOffering co JOIN co.course c JOIN sa.classSession cs " +
            "WHERE sa.status = 'Present' AND sa.isDeleted = false AND e.isDeleted = false AND c.isDeleted = false " +
            "GROUP BY sa.enrollment.student.id, c.id")
     Page<Object[]> findAttendancePercentageByStudent(Pageable pageable);

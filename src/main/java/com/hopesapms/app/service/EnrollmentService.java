@@ -1,10 +1,12 @@
 package com.hopesapms.app.service;
 
+import com.hopesapms.app.dto.BulkEnrollmentRowDTO;
+import com.hopesapms.app.dto.ImportResultDTO;
 import com.hopesapms.app.dto.EnrollmentRequestDTO;
 import com.hopesapms.app.dto.EnrollmentResponseDTO;
 import com.hopesapms.app.exception.ResourceNotFoundException;
-import com.hopesapms.app.model.*; // Import all models
-import com.hopesapms.app.repository.*; // Import all repos
+import com.hopesapms.app.model.*;
+import com.hopesapms.app.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -12,10 +14,11 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -23,57 +26,105 @@ public class EnrollmentService {
 
     private final EnrollmentRepository enrollmentRepository;
     private final UserRepository userRepository;
-    private final CourseRepository courseRepository;
+    private final StudentRepository studentRepository;
+    private final ExcelImportService excelImportService;
     private final AuditLogService auditLogService;
+    
+    
+    private final CourseOfferingRepository courseOfferingRepository; 
 
     @Transactional
-    public EnrollmentResponseDTO enrollInCourse(EnrollmentRequestDTO dto, Authentication authentication) {
+    public EnrollmentResponseDTO enrollStudent(EnrollmentRequestDTO dto) {
+
+        Student student = studentRepository.findById(dto.getStudentId())
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found with id: " + dto.getStudentId()));
+
+        CourseOffering courseOffering = courseOfferingRepository.findById(dto.getCourseOfferingId())
+                .orElseThrow(() -> new ResourceNotFoundException("Course Offering not found with id: " + dto.getCourseOfferingId()));
+
         
-        User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
-                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
+        enrollmentRepository
+                .findByStudentAndCourseOffering(student.getId(), courseOffering.getId())
+                .ifPresent(e -> {
+                    throw new IllegalArgumentException("Student " + student.getId() + " is already enrolled in offering " + courseOffering.getId());
+                });
 
-        boolean isStudent = user.getRoles().stream()
-                .anyMatch(role -> "STUDENT".equals(role.getName()));
-        if (!isStudent) {
-            throw new AccessDeniedException("Only students can enroll in courses.");
-        }
+        boolean isAdd = false;
+        Course courseToHistoryCheck = courseOffering.getCourse(); 
+        List<Enrollment> history = enrollmentRepository
+                .findEnrollmentHistoryForCourse(student.getId(), courseToHistoryCheck.getId());
 
-        Course course = courseRepository.findByIdAndIsDeletedFalse(dto.getCourseId())
-                .orElseThrow(() -> new ResourceNotFoundException("Course not found with id: " + dto.getCourseId()));
-
-        Enrollment existing = enrollmentRepository
-                .findByStudentIdAndCourseId(user.getId(), course.getId());
-
-        boolean isAdd = false; 
-
-        if (existing != null) {
-            
-            if ("ENROLLED".equals(existing.getStatus()) || "IN_PROGRESS".equals(existing.getStatus())) {
-                throw new IllegalArgumentException("You are already actively enrolled in this course: " + course.getCourseCode());
+        if (!history.isEmpty()) {
+            Enrollment mostRecent = history.get(0);
+            if ("COMPLETED".equals(mostRecent.getStatus()) && !"F".equals(mostRecent.getFinalGrade())) {
+                throw new IllegalArgumentException("Student has already passed this course: " + courseToHistoryCheck.getCourseCode());
             }
-            
-            if ("COMPLETED".equals(existing.getStatus()) && !"F".equals(existing.getFinalGrade())) {
-                 throw new IllegalArgumentException("You have already passed this course: " + course.getCourseCode());
-            }
-
-            if ("COMPLETED".equals(existing.getStatus()) && "F".equals(existing.getFinalGrade())) {
+            if ("F".equals(mostRecent.getFinalGrade())) {
                 isAdd = true;
             }
         }
-        
-        Enrollment newEnrollment = Enrollment.builder()
-                .student(user)
-                .course(course)
-                .enrollmentDate(LocalDate.now())
-                .status("ENROLLED") 
-                .isAddStudent(isAdd) 
-                .build();
-        
-        Enrollment savedEnrollment = enrollmentRepository.save(newEnrollment);
 
-        auditLogService.log("ENROLL_COURSE", "Enrollment", savedEnrollment.getId().longValue(), null, "Student " + user.getId() + " enrolled in " + course.getId());
-        
+        Enrollment newEnrollment = Enrollment.builder()
+                .student(student)
+                .courseOffering(courseOffering)
+                .enrollmentDate(LocalDate.now())
+                .status("ENROLLED")
+                .isAddStudent(isAdd)
+                .build();
+
+        Enrollment savedEnrollment = enrollmentRepository.save(newEnrollment);
+        auditLogService.log("ENROLL_STUDENT", "Enrollment", savedEnrollment.getId().longValue(), null,
+                "Registrar enrolled Student " + student.getId() + " in Offering " + courseOffering.getId());
+
         return mapToResponseDTO(savedEnrollment);
+    }
+
+    @Transactional
+    public ImportResultDTO bulkEnrollStudents(MultipartFile file) {
+        List<BulkEnrollmentRowDTO> rows;
+        try {
+            
+            rows = excelImportService.parseEnrollments(file);
+            
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to parse Excel file: " + e.getMessage());
+        }
+
+        int successfulEnrollments = 0;
+        List<String> errors = new ArrayList<>();
+
+        for (int i = 0; i < rows.size(); i++) {
+            BulkEnrollmentRowDTO row = rows.get(i);
+           
+            String rowIdentifier = "Row " + (i + 2); 
+
+            try {
+                Student student = studentRepository.findByStudentId(row.getStudentId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Student not found with ID: " + row.getStudentId()));
+
+                CourseOffering offering = courseOfferingRepository.findById(row.getCourseOfferingId())
+                        .orElseThrow(() -> new ResourceNotFoundException("CourseOffering not found with ID: " + row.getCourseOfferingId()));
+
+                if (enrollmentRepository.existsByStudentAndCourseOffering(student, offering)) {
+                    
+                    errors.add(rowIdentifier + ": Student " + row.getStudentId() + " is already enrolled.");
+                    continue; 
+                }
+
+                Enrollment newEnrollment = new Enrollment();
+                newEnrollment.setStudent(student);
+                newEnrollment.setCourseOffering(offering);
+                newEnrollment.setStatus("ENROLLED");
+                
+                enrollmentRepository.save(newEnrollment);
+                successfulEnrollments++;
+
+            } catch (Exception e) {
+                errors.add(rowIdentifier + ": " + e.getMessage());
+            }
+        }
+        
+        return new ImportResultDTO(successfulEnrollments, 0, errors);
     }
 
     @Transactional(readOnly = true)
@@ -81,21 +132,31 @@ public class EnrollmentService {
         User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
 
-        Page<Enrollment> enrollmentPage = enrollmentRepository.findByStudentId(user.getId(), pageable);
-        
+        Student student = studentRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new AccessDeniedException("User is not a student."));
+
+        Page<Enrollment> enrollmentPage = enrollmentRepository.findByStudentId(student.getId(), pageable);
+
         return enrollmentPage.map(this::mapToResponseDTO);
     }
 
     private EnrollmentResponseDTO mapToResponseDTO(Enrollment e) {
         EnrollmentResponseDTO dto = new EnrollmentResponseDTO();
         dto.setEnrollmentId(e.getId());
-        dto.setCourseId(e.getCourse().getId());
-        dto.setCourseCode(e.getCourse().getCourseCode());
-        dto.setCourseTitle(e.getCourse().getTitle());
         dto.setEnrollmentDate(e.getEnrollmentDate());
         dto.setStatus(e.getStatus());
         dto.setFinalGrade(e.getFinalGrade());
         dto.setAddStudent(e.isAddStudent());
+
+        
+        CourseOffering offering = e.getCourseOffering();
+        dto.setCourseOfferingId(offering.getId());
+        dto.setSemesterName(offering.getAcademicSemester().getName());
+        dto.setInstructorName(offering.getInstructor().getUser().getFirstName() + " " + offering.getInstructor().getUser().getLastName());
+        dto.setSectionName(offering.getSection().getName());
+        dto.setCourseCode(offering.getCourse().getCourseCode());
+        dto.setCourseTitle(offering.getCourse().getTitle());
+
         return dto;
     }
 }

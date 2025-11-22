@@ -7,12 +7,14 @@ import java.time.LocalDate;
 public class EnrollmentResponseDTO {
     
     private Integer enrollmentId;
-    private Integer courseId;
+    private LocalDate enrollmentDate;
+    private String status;
+    private String finalGrade;
+    private boolean isAddStudent;
+    private Long courseOfferingId;
     private String courseCode;
     private String courseTitle;
-    
-    private LocalDate enrollmentDate;
-    private String status; 
-    private String finalGrade;
-    private boolean isAddStudent; 
+    private String semesterName;
+    private String instructorName;
+    private String sectionName;
 }

@@ -1,6 +1,5 @@
 package com.hopesapms.app.controller;
 
-import com.hopesapms.app.dto.CompleteProfileRequest;
 import com.hopesapms.app.dto.UpdateUserPrivilegesRequest;
 import com.hopesapms.app.dto.CreateUserRequest;
 import com.hopesapms.app.dto.UpdateUserRequest;

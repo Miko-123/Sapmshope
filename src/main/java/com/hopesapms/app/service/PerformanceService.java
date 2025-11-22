@@ -5,7 +5,7 @@ import com.hopesapms.app.dto.SemesterPerformanceDTO;
 import com.hopesapms.app.exception.ResourceNotFoundException;
 import com.hopesapms.app.model.*;
 import com.hopesapms.app.repository.*;
-import com.hopesapms.app.util.GpaCalculationUtil; // Import our new util
+import com.hopesapms.app.util.GpaCalculationUtil; 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
@@ -31,11 +31,9 @@ public class PerformanceService {
     @Transactional(readOnly = true)
     public SemesterPerformanceDTO getMyPerformance(Authentication authentication) {
         
-        // --- 1. Get User and All Enrollments ---
         User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
 
-        // Get ALL enrollments (active and completed)
         List<Enrollment> allEnrollments = enrollmentRepository.findByStudentId(user.getId(), Pageable.unpaged()).getContent();
 
         List<CoursePerformanceDTO> coursePerformances = new ArrayList<>();
@@ -43,25 +41,23 @@ public class PerformanceService {
         double totalCreditsAttempted = 0.0;
         double totalCreditsEarned = 0.0;
         
-        // --- 2. Loop Through Each Enrollment ---
+
         for (Enrollment enrollment : allEnrollments) {
-            Course course = enrollment.getCourse();
+            CourseOffering offering = enrollment.getCourseOffering();
+            Course course = offering.getCourse();
             
-            // Get all assessments for this single course
+           
             List<Assessment> assessments = assessmentRepository.findByCourse_IdAndIsDeletedFalse(course.getId());
             
-            // Get all scores for this single enrollment
             List<Score> scores = scoreRepository.findByEnrollmentId(enrollment.getId(), Pageable.unpaged()).getContent();
             Map<Integer, BigDecimal> scoreMap = scores.stream()
                     .collect(Collectors.toMap(s -> s.getAssessment().getId(), Score::getScoreValue));
 
-            // --- 3. Calculate Final Grade for this Course ---
             BigDecimal finalPercentage = calculateWeightedPercentage(assessments, scoreMap);
             String letterGrade = GpaCalculationUtil.calculateLetterGrade(finalPercentage);
             Double gradePoint = GpaCalculationUtil.getGradePoint(letterGrade);
-            Double courseCredits = course.getCredits(); // Assuming Course model has getCredits()
+            Double courseCredits = course.getCredits(); 
 
-            // --- 4. Populate DTO and aggregate totals ---
             CoursePerformanceDTO courseDTO = new CoursePerformanceDTO();
             courseDTO.setCourseCode(course.getCourseCode());
             courseDTO.setCourseTitle(course.getTitle());
@@ -71,10 +67,8 @@ public class PerformanceService {
             courseDTO.setGradePoint(gradePoint);
             coursePerformances.add(courseDTO);
 
-            // --- 5. GPA Calculation Logic ---
             if (courseCredits != null) {
                 totalCreditsAttempted += courseCredits;
-                // Quality Points = Grade Point * Course Credits
                 totalQualityPoints += (gradePoint * courseCredits);
                 if (!"F".equals(letterGrade)) {
                     totalCreditsEarned += courseCredits;
@@ -82,8 +76,6 @@ public class PerformanceService {
             }
         }
         
-        // --- 6. Final Calculation & DTO Assembly ---
-        // CGPA = Total Quality Points / Total Credits Attempted
         double cgpa = (totalCreditsAttempted == 0) ? 0.0 : (totalQualityPoints / totalCreditsAttempted);
         
         SemesterPerformanceDTO performanceDTO = new SemesterPerformanceDTO();
@@ -91,7 +83,6 @@ public class PerformanceService {
         performanceDTO.setTotalCreditsAttempted(totalCreditsAttempted);
         performanceDTO.setTotalCreditsEarned(totalCreditsEarned);
         
-        // For now, CGPA is the same as Semester GPA since we don't have semester filtering
         performanceDTO.setSemesterGPA(cgpa); 
         performanceDTO.setCumulativeGPA(cgpa);
 

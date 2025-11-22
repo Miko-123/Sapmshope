@@ -8,6 +8,7 @@ import com.hopesapms.app.dto.MessageResponseDTO;
 import com.hopesapms.app.dto.JwtResponse;
 import com.hopesapms.app.model.User;
 import com.hopesapms.app.dto.LoginRequest;
+import com.hopesapms.app.dto.AuthProfileDTO;
 import com.hopesapms.app.dto.CompleteProfileRequest;
 import com.hopesapms.app.repository.UserRepository;
 
@@ -15,7 +16,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
+
+import org.springframework.security.core.Authentication;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -27,6 +31,21 @@ public class AuthController {
     private final AuthService authService;
     private final VerificationService verificationService;
     private final EmailService emailService;
+
+    @GetMapping("/me")
+    public ResponseEntity<AuthProfileDTO> getMyProfile(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(401).build();
+        }
+        
+        String username = authentication.getName();
+        
+        User user = userRepository.findByEmailAndIsDeletedFalse(username) 
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+
+        AuthProfileDTO profile = new AuthProfileDTO(user);
+        return ResponseEntity.ok(profile);
+    }
 
     @PostMapping("/request-code")
     public ResponseEntity<MessageResponseDTO> sendCode(@RequestParam("email") String email) {

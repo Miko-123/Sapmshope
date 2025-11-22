@@ -13,18 +13,19 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/gradebook")
 @RequiredArgsConstructor
-@Tag(name = "Gradebook (Instructor)", description = "APIs for instructors to view course gradebooks (UC-009)")
+@Tag(name = "Gradebook (Instructor)", description = "APIs for instructors to view course gradebooks")
 public class GradebookController {
 
     private final GradebookService gradebookService;
 
-    @GetMapping("/{courseId}")
-    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'INSTRUCTOR')")
-    @Operation(summary = "Get the full gradebook for a course")
-    public ResponseEntity<GradebookDTO> getGradebookForCourse(
-            @PathVariable Integer courseId, Authentication authentication) {
+    @GetMapping("/offering/{courseOfferingId}") 
+    @PreAuthorize("hasAnyAuthority('DEPARTMENT_HEAD', 'INSTRUCTOR', 'SYSTEM_ADMIN')")
+    @Operation(summary = "Get the full gradebook for a specific course offering")
+    public ResponseEntity<GradebookDTO> getGradebookForCourseOffering(
+            @PathVariable Long courseOfferingId, 
+            Authentication authentication) {
         
-        GradebookDTO gradebook = gradebookService.getGradebookForCourse(courseId, authentication);
+        GradebookDTO gradebook = gradebookService.getGradebookForCourseOffering(courseOfferingId, authentication);
         return ResponseEntity.ok(gradebook);
     }
 }

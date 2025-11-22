@@ -29,13 +29,11 @@ public class ClassSessionService {
     @Transactional
     public ClassSessionResponseDTO createClassSession(ClassSessionRequestDTO dto, Authentication authentication) {
         
-        // --- 1. Get Entities (with ...AndIsDeletedFalse) ---
         Course course = courseRepository.findByIdAndIsDeletedFalse(dto.getCourseId())
                 .orElseThrow(() -> new ResourceNotFoundException("Course not found"));
         User instructor = userRepository.findById(dto.getScheduledInstructorId())
                 .orElseThrow(() -> new ResourceNotFoundException("Instructor not found"));
 
-        // --- 2. Authorization Check ---
         checkUserAuthorityForCourse(authentication, course.getDepartment().getId(), "create session for");
 
         ClassSession session = ClassSession.builder()
@@ -62,7 +60,6 @@ public class ClassSessionService {
         ClassSession session = classSessionRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("ClassSession not found"));
 
-        // --- Authorization Check ---
         checkUserAuthorityForCourse(authentication, session.getCourse().getDepartment().getId(), "delete session for");
 
         String oldData = session.toString();
@@ -70,8 +67,6 @@ public class ClassSessionService {
         classSessionRepository.save(session);
         auditLogService.log("DELETE_SESSION", "ClassSession", id.longValue(), oldData, "DELETED");
     }
-
-    // --- Helper Methods ---
     
     private void checkUserAuthorityForCourse(Authentication authentication, Long departmentId, String action) {
         User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
@@ -87,7 +82,7 @@ public class ClassSessionService {
                 .anyMatch(role -> "DEPARTMENT_HEAD".equals(role.getName()));
         
         if ((isInstructor || isDeptHead) && user.getDepartment() != null && user.getDepartment().getId().equals(departmentId)) {
-            return; // Authorized
+            return; 
         }
         throw new AccessDeniedException("You do not have permission to " + action + " this course.");
     }

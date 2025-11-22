@@ -6,6 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.Set;
 
 @Entity
 @Table(name = "department")
@@ -37,6 +38,9 @@ public class Department {
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_head_id", referencedColumnName = "id")
     private User departmentHead;
+
+    @OneToMany(mappedBy = "department", fetch = FetchType.LAZY)
+    private Set<User> staff;
 
     @Column(name = "is_deleted", nullable = false)
     @Builder.Default

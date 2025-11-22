@@ -17,4 +17,6 @@ public class AssessmentResponseDTO {
     private String status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    private boolean isBase;
 }

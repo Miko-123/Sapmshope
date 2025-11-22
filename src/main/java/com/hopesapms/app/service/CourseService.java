@@ -57,13 +57,15 @@ public class CourseService {
                 .description(dto.getDescription())
                 .program(program)           
                 .department(department)     
-                .status("NEW") 
+                .yearLevel(dto.getYearLevel()) 
+                .prerequisite(dto.getPrerequisite()) 
                 .build();
 
         Course savedCourse = courseRepository.save(course);
         auditLogService.log("CREATE_COURSE", "Course", savedCourse.getId().longValue(), null, savedCourse.toString());
         return mapEntityToDto(savedCourse);
     }
+
 
     @Transactional
     public List<CourseResponseDTO> bulkCreateCourses(List<CourseRequestDTO> dtoList, Authentication authentication) {
@@ -94,7 +96,8 @@ public class CourseService {
                     .description(dto.getDescription())
                     .program(program)
                     .department(department)
-                    .status("NEW")
+                    .yearLevel(dto.getYearLevel())
+                    .prerequisite(dto.getPrerequisite())
                     .build();
         }).collect(Collectors.toList());
 
@@ -108,24 +111,22 @@ public class CourseService {
 
     @Transactional(readOnly = true)
     public Page<CourseResponseDTO> getCoursesByDepartment(Long departmentId, Pageable pageable) {
-        // This existing query in your repository works perfectly for this
         Page<Course> coursePage = courseRepository.findByDepartment_IdAndIsDeletedFalse(departmentId, pageable);
         return coursePage.map(this::mapEntityToDto);
     }
 
     @Transactional(readOnly = true)
-    public CourseResponseDTO getCourseById(Integer id) { // <-- Kept as Integer
+    public CourseResponseDTO getCourseById(Integer id) { 
         Course course = courseRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Course not found with id: " + id));
         return mapEntityToDto(course);
     }
 
     @Transactional
-    public void deleteCourse(Integer id, Authentication authentication) { // <-- Kept as Integer
+    public void deleteCourse(Integer id, Authentication authentication) { 
         Course course = courseRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Course not found with id: " + id));
 
-        // --- Authorization Check (using your old helper) ---
         checkUserAuthorityForDepartment(authentication, course.getDepartment().getId(), "delete course from");
 
         String oldData = course.toString();
@@ -133,9 +134,7 @@ public class CourseService {
         courseRepository.save(course);
         auditLogService.log("DELETE_COURSE", "Course", id.longValue(), oldData, "DELETED");
     }
-
-    // --- Helper Methods (Kept from your old service) ---
-
+    
     private User getUserFromAuth(Authentication authentication) {
         return userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
@@ -160,29 +159,22 @@ public class CourseService {
 
     private CourseResponseDTO mapEntityToDto(Course course) {
         CourseResponseDTO dto = new CourseResponseDTO();
-        dto.setId(course.getId()); // Integer
+        dto.setId(course.getId());
         dto.setTitle(course.getTitle());
         dto.setCourseCode(course.getCourseCode());
         dto.setCredits(course.getCredits());
         dto.setDescription(course.getDescription());
+        dto.setYearLevel(course.getYearLevel());
+        dto.setPrerequisite(course.getPrerequisite());
         
-        // Map new Program link
         if (course.getProgram() != null) {
             dto.setProgramId(course.getProgram().getId());
             dto.setProgramName(course.getProgram().getName());
         }
         
-        // Map old Department link
         if (course.getDepartment() != null) {
             dto.setDepartmentId(course.getDepartment().getId());
             dto.setDepartmentName(course.getDepartment().getName());
-        }
-        
-        // Map old Semester link
-        if (course.getAcademicSemester() != null) {
-            dto.setAcademicSemesterId(course.getAcademicSemester().getId());
-            // You'll need to fetch the name if it's not eagerly loaded
-            // dto.setAcademicSemesterName(course.getAcademicSemester().getName());
         }
         
         dto.setCreatedAt(course.getCreatedAt());

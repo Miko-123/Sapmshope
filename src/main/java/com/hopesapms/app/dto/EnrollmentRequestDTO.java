@@ -5,7 +5,10 @@ import lombok.Data;
 
 @Data
 public class EnrollmentRequestDTO {
+    
+    @NotNull(message = "Student ID is required")
+    private Integer studentId;
 
-    @NotNull(message = "Course ID is required to enroll")
-    private Integer courseId;
+    @NotNull(message = "Course Offering ID is required")
+    private Long courseOfferingId;
 }

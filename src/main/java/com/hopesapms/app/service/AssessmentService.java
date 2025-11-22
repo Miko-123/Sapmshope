@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Service
-@RequiredArgsConstructor // Replaces @Autowired for constructor injection
+@RequiredArgsConstructor
 public class AssessmentService {
 
     private final AssessmentRepository assessmentRepository;
@@ -36,30 +36,35 @@ public class AssessmentService {
 
     @Transactional
     public AssessmentResponseDTO createAssessment(AssessmentRequestDTO dto, Authentication authentication) {
-        
         Course course = courseRepository.findByIdAndIsDeletedFalse(dto.getCourseId())
                 .orElseThrow(() -> new ResourceNotFoundException("Course not found"));
 
-        // --- 1. Authorization Check ---
-        checkUserAuthorityForCourse(authentication, course.getDepartment().getId(), "create assessment for");
+        User user = checkUserAuthorityForCourse(authentication, course.getDepartment().getId(), "create assessment for");
 
-        // --- 2. Critical Business Logic: Check Weight ---
-        validateAssessmentWeight(dto.getCourseId(), dto.getWeight(), null);
         
+        boolean isBaseRequest = dto.getIsBase() != null && dto.getIsBase();
+        
+        if (isBaseRequest && !isDeptHeadOrAdmin(user)) {
+            throw new AccessDeniedException("Only Department Heads or Admins can create 'Base' assessments.");
+        }
+
+        validateAssessmentWeight(dto.getCourseId(), dto.getWeight(), null);
+
         Assessment assessment = Assessment.builder()
                 .course(course)
                 .name(dto.getName())
                 .type(dto.getType())
                 .maxScore(dto.getMaxScore())
                 .weight(dto.getWeight())
-                .dueDate(dto.getDueDate())
+                .dueDate(dto.getDueDate()) 
                 .description(dto.getDescription())
-                .status("PENDING")
+                .status("PENDING") 
+                .isBase(isBaseRequest) 
                 .build();
 
         Assessment saved = assessmentRepository.save(assessment);
         auditLogService.log("CREATE_ASSESSMENT", "Assessment", saved.getId().longValue(), null, saved.toString());
-        
+
         return mapToResponseDTO(saved);
     }
 
@@ -68,11 +73,12 @@ public class AssessmentService {
         Assessment assessment = assessmentRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Assessment not found"));
 
-        // --- 1. Authorization Check ---
-        checkUserAuthorityForCourse(authentication, assessment.getCourse().getDepartment().getId(), "update");
+        User user = checkUserAuthorityForCourse(authentication, assessment.getCourse().getDepartment().getId(), "update");
 
-        // --- 2. Critical Business Logic: Check Weight ---
-        // (We pass 'id' to ignore this assessment's *old* weight in the calculation)
+        if (assessment.isBase() && !isDeptHeadOrAdmin(user)) {
+            throw new AccessDeniedException("You cannot modify a Core Course Assessment defined by the Department.");
+        }
+
         validateAssessmentWeight(assessment.getCourse().getId(), dto.getWeight(), id);
 
         String oldData = assessment.toString();
@@ -84,101 +90,109 @@ public class AssessmentService {
         assessment.setDueDate(dto.getDueDate());
         assessment.setDescription(dto.getDescription());
 
+        if (dto.getIsBase() != null && isDeptHeadOrAdmin(user)) {
+            assessment.setBase(dto.getIsBase());
+        }
+
         Assessment updated = assessmentRepository.save(assessment);
-        auditLogService.log("UPDATE_ASSESSMENT", "Assessment", updated.getId().longValue(), oldData, updated.toString());
+        auditLogService.log("UPDATE_ASSESSMENT", "Assessment", updated.getId().longValue(), oldData,
+                updated.toString());
 
         return mapToResponseDTO(updated);
     }
-    
+
     @Transactional(readOnly = true)
     public Page<AssessmentResponseDTO> getAssessmentsForCourse(Integer courseId, Pageable pageable) {
-        // Use your existing paginated method
-        return assessmentRepository.findByCourseId(courseId, pageable).map(this::mapToResponseDTO);
+        
+        if (!courseRepository.existsByIdAndIsDeletedFalse(courseId)) {
+            throw new ResourceNotFoundException("Course not found with id: " + courseId);
+        }
+        
+        return assessmentRepository.findByCourseId(courseId, pageable)
+                .map(this::mapToResponseDTO);
     }
-    
+
     @Transactional
     public void deleteAssessment(Integer id, Authentication authentication) {
         Assessment assessment = assessmentRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Assessment not found"));
 
-        // --- 1. Authorization Check ---
-        checkUserAuthorityForCourse(authentication, assessment.getCourse().getDepartment().getId(), "delete");
-        
+        User user = checkUserAuthorityForCourse(authentication, assessment.getCourse().getDepartment().getId(), "delete");
+
+        if (assessment.isBase() && !isDeptHeadOrAdmin(user)) {
+            throw new AccessDeniedException("You cannot delete a Core Course Assessment defined by the Department.");
+        }
+
         String oldData = assessment.toString();
         assessment.setDeleted(true);
         assessmentRepository.save(assessment);
-        
+
         auditLogService.log("DELETE_ASSESSMENT", "Assessment", id.longValue(), oldData, "DELETED");
     }
 
     @Transactional(readOnly = true)
     public List<AssessmentResponseDTO> getMyAssessments(Authentication authentication) {
         User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
-        .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
+                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
 
         Page<Enrollment> enrollments = enrollmentRepository.findByStudentId(user.getId(), Pageable.unpaged());
 
         Stream<Assessment> allAssessments = enrollments.stream()
-        .filter(e -> "ENROLLED".equals(e.getStatus()) || "IN_PROGRESS".equals(e.getStatus()))
-        .flatMap(enrollment -> {
-            return assessmentRepository.findByCourse_IdAndIsDeletedFalse(enrollment.getCourse().getId()).stream();
-        });
+                .filter(e -> "ENROLLED".equals(e.getStatus()) || "IN_PROGRESS".equals(e.getStatus()))
+                .flatMap(enrollment -> {
+                    return assessmentRepository.findByCourse_IdAndIsDeletedFalse(
+                            enrollment.getCourseOffering().getCourse().getId()
+                    ).stream();
+                });
 
         return allAssessments
-        .distinct().map(this::mapToResponseDTO)
-        .collect(Collectors.toList());
+                .distinct()
+                .map(this::mapToResponseDTO)
+                .collect(Collectors.toList());
     }
 
-    // --- Helper Methods ---
 
-    /**
-     * Checks if the total weight of all assessments for a course exceeds 1.0 (100%).
-     * @param courseId The course to check.
-     * @param newWeight The weight of the new/updated assessment.
-     * @param assessmentToIgnoreId If updating, pass the ID of the assessment to ignore its old weight.
-     */
     private void validateAssessmentWeight(Integer courseId, BigDecimal newWeight, Integer assessmentToIgnoreId) {
         List<Assessment> existingAssessments = assessmentRepository.findByCourse_IdAndIsDeletedFalse(courseId);
-        
         BigDecimal totalWeight = BigDecimal.ZERO;
-        
+
         for (Assessment existing : existingAssessments) {
-            // If we are updating, ignore the old weight of the assessment being updated
             if (assessmentToIgnoreId != null && existing.getId().equals(assessmentToIgnoreId)) {
-                continue;
+                continue; 
             }
             totalWeight = totalWeight.add(existing.getWeight());
         }
-        
         totalWeight = totalWeight.add(newWeight);
-        
-        // Check if totalWeight > 1.0
-        if (totalWeight.compareTo(BigDecimal.ONE) > 0) {
-            throw new IllegalArgumentException("Adding this assessment would make the total weight for the course exceed 100%. " +
-                    "Current total: " + totalWeight.multiply(BigDecimal.valueOf(100)) + "%");
+
+        if (totalWeight.compareTo(new BigDecimal("1.0001")) > 0) {
+            throw new IllegalArgumentException("Total course weight cannot exceed 100%. Current total with new item: " +
+                    totalWeight.multiply(BigDecimal.valueOf(100)).setScale(2) + "%");
         }
     }
 
-    private void checkUserAuthorityForCourse(Authentication authentication, Long departmentId, String action) {
+    private User checkUserAuthorityForCourse(Authentication authentication, Long departmentId, String action) {
         User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
-            .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
+                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
 
-        boolean isSystemAdmin = user.getRoles().stream()
-                .anyMatch(role -> "SYSTEM_ADMIN".equals(role.getName()));
-        if (isSystemAdmin) return;
+        if (isDeptHeadOrAdmin(user)) {
+            return user; 
+        }
 
         boolean isInstructor = user.getRoles().stream()
                 .anyMatch(role -> "INSTRUCTOR".equals(role.getName()));
-        boolean isDeptHead = user.getRoles().stream()
-                .anyMatch(role -> "DEPARTMENT_HEAD".equals(role.getName()));
-        
-        if ((isInstructor || isDeptHead) && user.getDepartment() != null && user.getDepartment().getId().equals(departmentId)) {
-            return; 
+
+        if (isInstructor && user.getDepartment() != null && user.getDepartment().getId().equals(departmentId)) {
+            return user; 
         }
 
         throw new AccessDeniedException("You do not have permission to " + action + " this course.");
     }
-    
+
+    private boolean isDeptHeadOrAdmin(User user) {
+        return user.getRoles().stream()
+                .anyMatch(role -> "SYSTEM_ADMIN".equals(role.getName()) || "DEPARTMENT_HEAD".equals(role.getName()));
+    }
+
     private AssessmentResponseDTO mapToResponseDTO(Assessment entity) {
         AssessmentResponseDTO dto = new AssessmentResponseDTO();
         dto.setId(entity.getId());
@@ -187,11 +201,12 @@ public class AssessmentService {
         dto.setType(entity.getType());
         dto.setMaxScore(entity.getMaxScore());
         dto.setWeight(entity.getWeight());
-        dto.setDueDate(entity.getDueDate());
+        dto.setDueDate(entity.getDueDate()); 
         dto.setDescription(entity.getDescription());
         dto.setStatus(entity.getStatus());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
+        dto.setBase(entity.isBase()); 
         return dto;
     }
 }

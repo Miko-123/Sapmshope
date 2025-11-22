@@ -15,4 +15,6 @@ public interface AcademicSemesterRepository extends JpaRepository<AcademicSemest
     Optional<AcademicSemester> findByIdAndIsDeletedFalse(Long id);
 
     boolean existsByNameAndIsDeletedFalse(String name);
+    
+    Optional<AcademicSemester> findByNameAndIsDeletedFalse(String name);
 }

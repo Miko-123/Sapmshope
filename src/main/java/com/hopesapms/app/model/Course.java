@@ -5,7 +5,6 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
@@ -20,19 +19,25 @@ import java.util.Set;
 public class Course {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id; // <-- Kept as Integer (Fixes errors)
+    private Integer id; 
 
     @Column(length = 255, nullable = false)
-    private String title;
+    private String title; 
 
     @Column(name = "course_code", length = 50, nullable = false, unique = true)
-    private String courseCode;
+    private String courseCode; 
+
+    @Column(nullable = false)
+    private Double credits; 
+
+    @Column(length = 255)
+    private String prerequisite; 
+
+    @Column(name = "year_level")
+    private Integer yearLevel; 
 
     @Column(columnDefinition = "TEXT")
     private String description;
-
-    @Column(nullable = false)
-    private Double credits;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_id", nullable = false)
@@ -41,20 +46,6 @@ public class Course {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "program_id") 
     private Program program;
-
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "academic_semester_id") 
-    private AcademicSemester academicSemester;
-
-    @Column(length = 50) 
-    private String status;
-
-    @Column(name = "start_date")
-    private LocalDate startDate;
-
-    @Column(name = "end_date")
-    private LocalDate endDate;
 
     @Column(name = "is_deleted", nullable = false)
     @Builder.Default

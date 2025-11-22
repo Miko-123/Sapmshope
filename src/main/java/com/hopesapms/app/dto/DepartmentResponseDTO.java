@@ -13,4 +13,6 @@ public class DepartmentResponseDTO {
     private String officeLocation;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Integer departmentHeadId;
+    private String departmentHeadName;
 }

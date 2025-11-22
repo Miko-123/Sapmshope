@@ -9,7 +9,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "enrollment")
+@Table(name = "enrollments") // This is correct, matches your file
 @Getter
 @Setter
 @NoArgsConstructor
@@ -22,17 +22,17 @@ public class Enrollment {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "student_id", nullable = false)
-    private User student;
+    private Student student; 
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "course_id", nullable = false)
-    private Course course;
+    @JoinColumn(name = "course_offering_id", nullable = false)
+    private CourseOffering courseOffering;
 
     @Column(name = "enrollment_date", nullable = false)
     private LocalDate enrollmentDate;
 
     @Column(length = 50, nullable = false)
-    private String status;  
+    private String status;  // e.g., "ENROLLED", "COMPLETED", "WITHDRAWN"
 
     @Column(name = "final_grade", length = 10)
     private String finalGrade;  

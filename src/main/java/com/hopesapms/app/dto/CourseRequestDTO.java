@@ -3,27 +3,27 @@ package com.hopesapms.app.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 @Data
 public class CourseRequestDTO {
 
-    @NotBlank(message = "Course title is required")
-    @Size(max = 255)
+    @NotBlank
     private String title;
 
-    @NotBlank(message = "Course code is required")
-    @Size(max = 50)
+    @NotBlank
     private String courseCode;
 
-    @NotNull(message = "Credits are required")
-    @Positive(message = "Credits must be a positive number")
+    @NotNull
+    @Positive
     private Double credits;
 
-    @NotNull(message = "Program ID is required")
-    private Long programId;
+    @NotNull
+    private Long programId; 
+
+    private Integer yearLevel; 
+    
+    private String prerequisite; 
 
     private String description;
-    
 }

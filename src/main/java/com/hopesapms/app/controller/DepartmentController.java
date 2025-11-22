@@ -13,7 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication; 
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,17 +21,36 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/departments")
 @RequiredArgsConstructor
-@Tag(name = "Department Management", description = "APIs for managing academic departments and staff") 
+@Tag(name = "Department Management", description = "APIs for managing academic departments and staff")
 public class DepartmentController {
 
     private final DepartmentService departmentService;
 
-    @PostMapping
+    @PostMapping("/create")
     @PreAuthorize("hasAuthority('SYSTEM_ADMIN')")
     @Operation(summary = "Create a new department (Admin Only)")
-    public ResponseEntity<DepartmentResponseDTO> createDepartment(@Valid @RequestBody CreateDepartmentRequest dto) {
+    public ResponseEntity<DepartmentResponseDTO> createDepartment(
+            @Valid @RequestBody CreateDepartmentRequest dto) {
         DepartmentResponseDTO createdDept = departmentService.createDepartment(dto);
         return new ResponseEntity<>(createdDept, HttpStatus.CREATED);
+    }
+
+    @PutMapping("/{departmentId}/assign-head/{userId}")
+    @PreAuthorize("hasAuthority('SYSTEM_ADMIN')")
+    @Operation(summary = "Assign a Department Head to a department (Admin Only)")
+    public ResponseEntity<UserResponseDTO> assignDepartmentHead(
+            @PathVariable Long departmentId,
+            @PathVariable Long userId) {
+
+        UserResponseDTO assignedHead = departmentService.assignDepartmentHead(departmentId, userId);
+        return ResponseEntity.ok(assignedHead);
+    }
+
+    @GetMapping("/unassigned-heads")
+    @PreAuthorize("hasAuthority('SYSTEM_ADMIN')")
+    @Operation(summary = "Get list of department heads not assigned to any department (Admin Only)")
+    public ResponseEntity<List<UserResponseDTO>> getUnassignedHeads() {
+        return ResponseEntity.ok(departmentService.getUnassignedHeads());
     }
 
     @PutMapping("/my-department/details")
@@ -39,20 +58,20 @@ public class DepartmentController {
     @Operation(summary = "Update my department details (Dept Head Only)")
     public ResponseEntity<DepartmentResponseDTO> updateMyDepartmentDetails(
             @Valid @RequestBody UpdateDepartmentDetailsRequest dto, Authentication authentication) {
-        
+
         DepartmentResponseDTO updatedDept = departmentService.updateMyDepartmentDetails(dto, authentication);
         return ResponseEntity.ok(updatedDept);
     }
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()") 
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get all active departments")
     public ResponseEntity<List<DepartmentResponseDTO>> getAllDepartments() {
         return ResponseEntity.ok(departmentService.getAllDepartments());
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("isAuthenticated()") 
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get a single department by ID")
     public ResponseEntity<DepartmentResponseDTO> getDepartmentById(@PathVariable Long id) {
         return ResponseEntity.ok(departmentService.getDepartmentById(id));
@@ -65,9 +84,6 @@ public class DepartmentController {
         departmentService.deleteDepartment(id);
         return ResponseEntity.noContent().build();
     }
-
-
-    // --- ADD THESE NEW ENDPOINTS FOR STAFF ASSIGNMENT ---
 
     @GetMapping("/unassigned-instructors")
     @PreAuthorize("hasAuthority('DEPARTMENT_HEAD')")
@@ -83,7 +99,7 @@ public class DepartmentController {
             @PathVariable Long departmentId,
             @Valid @RequestBody AssignStaffRequestDTO dto,
             Authentication authentication) {
-        
+
         UserResponseDTO assignedUser = departmentService.assignStaffToDepartment(departmentId, dto, authentication);
         return ResponseEntity.ok(assignedUser);
     }
