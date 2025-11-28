@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import java.util.Set;
@@ -126,9 +127,18 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
-    public Page<UserResponseDTO> getAllActiveUsers(Pageable pageable) {
-        return userRepository.findByIsDeletedFalse(pageable).map(this::mapToResponse);
-    }
+public List<UserResponseDTO> getAllActiveUsers() {
+    List<User> users = userRepository.findByIsDeletedFalse();
+
+    return users.stream()
+            .map(UserResponseDTO::new) // or map(u -> new UserResponseDTO(u))
+            .collect(Collectors.toList());
+}
+public Page<UserResponseDTO> getAllActiveStudents(String roleName, Pageable pageable) {
+    Page<User> users = userRepository.findActiveStudents(roleName, pageable);
+
+    return users.map(UserResponseDTO::new);
+}
 
     @Transactional(readOnly = true)
     public Page<UserResponseDTO> getUsersByRole(String roleName, Pageable pageable) {
@@ -165,7 +175,7 @@ public class UserService {
     }
 
     private UserResponseDTO mapToResponse(User user) {
-        UserResponseDTO r = new UserResponseDTO();
+        UserResponseDTO r = new UserResponseDTO(user);
         r.setId(user.getId());
         r.setUsername(user.getUsername());
         r.setEmail(user.getEmail());
@@ -177,7 +187,7 @@ public class UserService {
         r.setProfilePictureUrl(user.getProfilePictureUrl());
         r.setRoles(user.getRoles().stream()
                 .map(role -> {
-                    UserResponseDTO.RoleResponse rr = new UserResponseDTO.RoleResponse();
+                    UserResponseDTO.RoleResponse rr = new UserResponseDTO.RoleResponse(role);
                     rr.setId(role.getId());
                     rr.setName(role.getName());
                     return rr;

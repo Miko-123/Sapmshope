@@ -38,28 +38,31 @@ public class AssessmentService {
     public AssessmentResponseDTO createAssessment(AssessmentRequestDTO dto, Authentication authentication) {
         Course course = courseRepository.findByIdAndIsDeletedFalse(dto.getCourseId())
                 .orElseThrow(() -> new ResourceNotFoundException("Course not found"));
+        User user = userRepository.findByIdAndIsDeletedFalse(dto.getUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        User user = checkUserAuthorityForCourse(authentication, course.getDepartment().getId(), "create assessment for");
+        // --- 1. Authorization Check ---
+        checkUserAuthorityForCourse(authentication, course.getDepartment().getId(), "create assessment for");
 
-        
+        // --- 2. Check Weight ---
+        validateAssessmentWeight(dto.getCourseId(), dto.getWeight(), null);
+
         boolean isBaseRequest = dto.getIsBase() != null && dto.getIsBase();
-        
+
         if (isBaseRequest && !isDeptHeadOrAdmin(user)) {
             throw new AccessDeniedException("Only Department Heads or Admins can create 'Base' assessments.");
         }
-
-        validateAssessmentWeight(dto.getCourseId(), dto.getWeight(), null);
-
         Assessment assessment = Assessment.builder()
+                .userId(user)
                 .course(course)
                 .name(dto.getName())
                 .type(dto.getType())
                 .maxScore(dto.getMaxScore())
                 .weight(dto.getWeight())
-                .dueDate(dto.getDueDate()) 
+                .dueDate(dto.getDueDate())
                 .description(dto.getDescription())
-                .status("PENDING") 
-                .isBase(isBaseRequest) 
+                .status("PENDING")
+                .isBase(isBaseRequest)
                 .build();
 
         Assessment saved = assessmentRepository.save(assessment);
@@ -73,7 +76,8 @@ public class AssessmentService {
         Assessment assessment = assessmentRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Assessment not found"));
 
-        User user = checkUserAuthorityForCourse(authentication, assessment.getCourse().getDepartment().getId(), "update");
+        User user = checkUserAuthorityForCourse(authentication, assessment.getCourse().getDepartment().getId(),
+                "update");
 
         if (assessment.isBase() && !isDeptHeadOrAdmin(user)) {
             throw new AccessDeniedException("You cannot modify a Core Course Assessment defined by the Department.");
@@ -83,6 +87,7 @@ public class AssessmentService {
 
         String oldData = assessment.toString();
 
+        assessment.setUserId(assessment.getUserId());
         assessment.setName(dto.getName());
         assessment.setType(dto.getType());
         assessment.setMaxScore(dto.getMaxScore());
@@ -103,11 +108,11 @@ public class AssessmentService {
 
     @Transactional(readOnly = true)
     public Page<AssessmentResponseDTO> getAssessmentsForCourse(Integer courseId, Pageable pageable) {
-        
+
         if (!courseRepository.existsByIdAndIsDeletedFalse(courseId)) {
             throw new ResourceNotFoundException("Course not found with id: " + courseId);
         }
-        
+
         return assessmentRepository.findByCourseId(courseId, pageable)
                 .map(this::mapToResponseDTO);
     }
@@ -117,7 +122,8 @@ public class AssessmentService {
         Assessment assessment = assessmentRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Assessment not found"));
 
-        User user = checkUserAuthorityForCourse(authentication, assessment.getCourse().getDepartment().getId(), "delete");
+        User user = checkUserAuthorityForCourse(authentication, assessment.getCourse().getDepartment().getId(),
+                "delete");
 
         if (assessment.isBase() && !isDeptHeadOrAdmin(user)) {
             throw new AccessDeniedException("You cannot delete a Core Course Assessment defined by the Department.");
@@ -141,8 +147,7 @@ public class AssessmentService {
                 .filter(e -> "ENROLLED".equals(e.getStatus()) || "IN_PROGRESS".equals(e.getStatus()))
                 .flatMap(enrollment -> {
                     return assessmentRepository.findByCourse_IdAndIsDeletedFalse(
-                            enrollment.getCourseOffering().getCourse().getId()
-                    ).stream();
+                            enrollment.getCourseOffering().getCourse().getId()).stream();
                 });
 
         return allAssessments
@@ -151,14 +156,13 @@ public class AssessmentService {
                 .collect(Collectors.toList());
     }
 
-
     private void validateAssessmentWeight(Integer courseId, BigDecimal newWeight, Integer assessmentToIgnoreId) {
         List<Assessment> existingAssessments = assessmentRepository.findByCourse_IdAndIsDeletedFalse(courseId);
         BigDecimal totalWeight = BigDecimal.ZERO;
 
         for (Assessment existing : existingAssessments) {
             if (assessmentToIgnoreId != null && existing.getId().equals(assessmentToIgnoreId)) {
-                continue; 
+                continue;
             }
             totalWeight = totalWeight.add(existing.getWeight());
         }
@@ -175,14 +179,14 @@ public class AssessmentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
 
         if (isDeptHeadOrAdmin(user)) {
-            return user; 
+            return user;
         }
 
         boolean isInstructor = user.getRoles().stream()
                 .anyMatch(role -> "INSTRUCTOR".equals(role.getName()));
 
         if (isInstructor && user.getDepartment() != null && user.getDepartment().getId().equals(departmentId)) {
-            return user; 
+            return user;
         }
 
         throw new AccessDeniedException("You do not have permission to " + action + " this course.");
@@ -201,12 +205,12 @@ public class AssessmentService {
         dto.setType(entity.getType());
         dto.setMaxScore(entity.getMaxScore());
         dto.setWeight(entity.getWeight());
-        dto.setDueDate(entity.getDueDate()); 
+        dto.setDueDate(entity.getDueDate());
         dto.setDescription(entity.getDescription());
         dto.setStatus(entity.getStatus());
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
-        dto.setBase(entity.isBase()); 
+        dto.setBase(entity.isBase());
         return dto;
     }
 }

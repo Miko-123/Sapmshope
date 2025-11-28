@@ -212,7 +212,7 @@ public class DepartmentService {
     // --- HELPER METHODS ---
 
     private UserResponseDTO mapToUserResponseDTO(User user) {
-        UserResponseDTO dto = new UserResponseDTO();
+        UserResponseDTO dto = new UserResponseDTO(user);
         dto.setId(user.getId());
         dto.setUsername(user.getUsername());
         dto.setEmail(user.getEmail());
@@ -222,7 +222,7 @@ public class DepartmentService {
 
         Set<UserResponseDTO.RoleResponse> roles = user.getRoles().stream()
                 .map(role -> {
-                    UserResponseDTO.RoleResponse rr = new UserResponseDTO.RoleResponse();
+                    UserResponseDTO.RoleResponse rr = new UserResponseDTO.RoleResponse(role);
                     rr.setId(role.getId());
                     rr.setName(role.getName());
                     return rr;

@@ -21,7 +21,7 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     boolean existsByEmailAndIsDeletedFalse(String email);
 
     @EntityGraph(attributePaths = {"roles"})
-    Page<User> findByIsDeletedFalse(Pageable pageable);
+    List<User> findByIsDeletedFalse();
 
     Optional<User> findByIdAndIsDeletedFalse(Integer id);
 
@@ -32,6 +32,10 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     @EntityGraph(attributePaths = {"roles"})
     @Query("SELECT u FROM User u JOIN u.roles r WHERE r.name = :roleName AND u.isDeleted = false")
     Page<User> findByRoleName(String roleName, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"roles"})
+    @Query("SELECT u FROM User u JOIN u.roles r WHERE u.isDeleted = false AND r.name = :roleName")
+    Page<User> findActiveStudents(String roleName, Pageable pageable);
 
     @Query("SELECT COUNT(u) FROM User u WHERE u.isDeleted = false AND SIZE(u.roles) > 0")
     Long countActiveUsersWithRoles();

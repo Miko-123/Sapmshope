@@ -4,6 +4,7 @@ import com.hopesapms.app.dto.CourseRequestDTO;
 import com.hopesapms.app.dto.CourseResponseDTO;
 import com.hopesapms.app.service.CourseService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -48,11 +49,12 @@ public class CourseController {
         return new ResponseEntity<>(created, HttpStatus.CREATED);
     }
 
-    @GetMapping("/by-department/{departmentId}")
+    @PostMapping("/by-department/{departmentId}")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get a paginated list of courses for a department")
     public ResponseEntity<Page<CourseResponseDTO>> getCoursesByDepartment(
-            @PathVariable Long departmentId, Pageable pageable) {
+            @PathVariable Long departmentId,
+            @Parameter(hidden = true) Pageable pageable) {
         
         Page<CourseResponseDTO> courses = courseService.getCoursesByDepartment(departmentId, pageable);
         return ResponseEntity.ok(courses);

@@ -20,8 +20,8 @@ public interface ClassSessionRepository extends JpaRepository<ClassSession, Inte
            "JOIN FETCH cs.course c " +
            "JOIN FETCH cs.scheduledInstructor i " +
            "WHERE c.id IN :courseIds AND cs.isDeleted = false " +
-           "AND cs.sessionDate >= :startDate " +
-           "ORDER BY cs.sessionDate, cs.sessionTime")
+           "AND cs.sessionDate >= :startDate ")
+            
     List<ClassSession> findByCourseIdInAndDateAfter(List<Integer> courseIds, LocalDate startDate);
 
     @Query("SELECT cs FROM ClassSession cs WHERE cs.isDeleted = false")

@@ -252,7 +252,7 @@ public class StudentService {
     }
 
     private UserResponseDTO mapToUserResponse(User u) {
-        UserResponseDTO r = new UserResponseDTO();
+        UserResponseDTO r = new UserResponseDTO(u);
         r.setId(u.getId());
         r.setUsername(u.getUsername());
         r.setEmail(u.getEmail());
@@ -260,7 +260,7 @@ public class StudentService {
         r.setLastName(u.getLastName());
         r.setRoles(u.getRoles().stream()
                 .map(role -> {
-                    UserResponseDTO.RoleResponse rr = new UserResponseDTO.RoleResponse();
+                    UserResponseDTO.RoleResponse rr = new UserResponseDTO.RoleResponse(role);
                     rr.setId(role.getId());
                     rr.setName(role.getName());
                     return rr;

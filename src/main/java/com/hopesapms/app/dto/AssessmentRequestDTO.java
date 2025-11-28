@@ -7,16 +7,20 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.Data;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
 public class AssessmentRequestDTO {
 
+    @NotNull(message = "User ID is required")
+    private Integer userId;
+
     @NotNull(message = "Course ID is required")
     private Integer courseId;
 
     @NotBlank(message = "Assessment name is required")
-    private String name; 
+    private String name;
 
     @NotBlank(message = "Assessment type is required")
     private String type; 
@@ -30,7 +34,7 @@ public class AssessmentRequestDTO {
     @DecimalMax(value = "1.00", message = "Weight cannot be more than 1.00 (100%)")
     private BigDecimal weight; 
 
-    private LocalDateTime dueDate;
+    private LocalDate dueDate;
     private String description;
     
     
