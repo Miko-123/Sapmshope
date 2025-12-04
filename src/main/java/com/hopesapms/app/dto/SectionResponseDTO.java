@@ -1,0 +1,16 @@
+package com.hopesapms.app.dto;
+
+import lombok.Data;
+import java.time.LocalDateTime;
+
+@Data
+public class SectionResponseDTO {
+    private Integer id;
+    private String name;
+    private Integer yearLevel;
+    private Integer capacity;
+    private Long programId;
+    private String programName;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}

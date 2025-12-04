@@ -1,0 +1,41 @@
+# =========================
+# Build & IDE Folders
+# =========================
+target/
+.idea/
+.vscode/
+*.iml
+*.class
+*.log
+
+# =========================
+# System Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Environment & Config Files
+# =========================
+*.env
+application-*.yml
+application-*.properties
+
+# =========================
+# Temporary Files
+# =========================
+*.tmp
+*.bak
+*.swp
+
+# =========================
+# IntelliJ specific
+# =========================
+out/
+*.iws
+
+# =========================
+# OS generated files
+# =========================
+ehthumbs.db
+Icon?
