@@ -39,7 +39,7 @@ public class CourseOfferingImportService {
     private int offeringsCreated;
     private int slotsAdded;
 
-    @Transactional
+   /* @Transactional
     public Map<String, Object> importOfferings(MultipartFile file, String defaultStatus, Authentication authentication) {
         this.offeringCache = new HashMap<>();
         this.errors = new ArrayList<>();
@@ -85,7 +85,7 @@ public class CourseOfferingImportService {
         return result;
     }
 
-    private void processRow(Row row, String status, User loggedInUser) {
+     private void processRow(Row row, String status, User loggedInUser) {
         String courseCode = getCellStringValue(row, 0);
         String sectionName = getCellStringValue(row, 1);
         String instructorEmail = getCellStringValue(row, 2);
@@ -123,7 +123,7 @@ public class CourseOfferingImportService {
         User user = userRepository.findByEmailAndIsDeletedFalse(instructorEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + instructorEmail));
                 
-        Instructor instructor = instructorRepository.findByUserId(user.getId())
+        Instructor instructor = instructorRepository.findByUser_Id(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Instructor profile not found for user: " + instructorEmail));
         
         AcademicSemester semester = academicSemesterRepository.findByNameAndIsDeletedFalse(semesterName)
@@ -154,7 +154,7 @@ public class CourseOfferingImportService {
         offering.addScheduleSlot(day, periods, room);
         this.slotsAdded++;
     }
-
+*/
     private String getCellStringValue(Row row, int cellIndex) {
         if (row.getCell(cellIndex) == null) {
             return "";
@@ -182,5 +182,7 @@ public class CourseOfferingImportService {
 
         throw new AccessDeniedException("You do not have permission to import offerings for this department.");
     }
+
+
 
 }

@@ -122,6 +122,10 @@ public class SectionService {
         if (section.getProgram() != null) {
             dto.setProgramId(section.getProgram().getId());
             dto.setProgramName(section.getProgram().getName());
+
+            if (section.getProgram().getDepartment() != null) {
+                dto.setDepartmentName(section.getProgram().getDepartment().getName());
+            }
         }
         return dto;
     }

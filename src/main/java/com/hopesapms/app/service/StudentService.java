@@ -14,6 +14,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
+import org.springframework.context.ApplicationEventPublisher;
+import com.hopesapms.app.event.StudentRegisteredEvent;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -33,15 +35,17 @@ public class StudentService {
     private final JavaMailSender mailSender;
     private final AuditLogService auditLogService;
     private final SectionRepository sectionRepository;
+    
+
+    private final ApplicationEventPublisher eventPublisher;
 
     private final Map<String, String> otpCache = new HashMap<>();
 
     private static final Pattern PASSWORD_PATTERN = Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]{8,}$");
     private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+?[1-9]\\d{1,14}$");
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW,
-        noRollbackFor = {IllegalArgumentException.class, EntityExistsException.class}
-    )
+    @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = { IllegalArgumentException.class,
+            EntityExistsException.class })
     public StudentResponse registerStudent(RegisterStudentRequest request) {
         if (studentRepository.existsByStudentIdAndIsDeletedFalse(request.getStudentId()))
             throw new IllegalArgumentException("Student ID already exists");
@@ -53,7 +57,8 @@ public class StudentService {
                 .orElseThrow(() -> new IllegalArgumentException("STUDENT role not found"));
 
         User user = User.builder()
-                .username((request.getFirstName() + "" + request.getMiddleName()))
+                .username((request.getFirstName() + "" + request.getMiddleName())) // Consider adding random numbers for
+                                                                                   // uniqueness
                 .email(request.getEmail())
                 .firstName(request.getFirstName())
                 .middleName(request.getMiddleName())
@@ -81,9 +86,12 @@ public class StudentService {
                 .status("PENDING")
                 .build();
 
-        student = studentRepository.save(student);
-        auditLogService.log("REGISTER_STUDENT", "Student", student.getId().longValue(), null, student.toString());
-        return mapToResponse(student);
+        Student saved = studentRepository.save(student);
+        auditLogService.log("REGISTER_STUDENT", "Student", saved.getId().longValue(), null, student.toString());
+
+        eventPublisher.publishEvent(new StudentRegisteredEvent(this, saved));
+
+        return mapToResponse(saved);
     }
 
     @Transactional
@@ -127,7 +135,7 @@ public class StudentService {
     public Page<StudentResponse> searchStudents(String query, Pageable pageable) {
         // We will create this repository method next
         Page<Student> students = studentRepository.searchStudents(query, pageable);
-        
+
         // I am assuming you have a mapping function like this.
         // If it's named differently, please adjust.
         return students.map(this::mapToResponse);
@@ -247,17 +255,17 @@ public class StudentService {
         r.setUpdatedAt(s.getUpdatedAt());
 
         if (s.getDepartment() != null) {
-    r.setDepartmentId(s.getDepartment().getId());
-    r.setDepartmentName(s.getDepartment().getName());
-}
-if (s.getProgram() != null) {
-    r.setProgramId(s.getProgram().getId());
-    r.setProgramName(s.getProgram().getName()); 
-}
-if (s.getSection() != null) {
-    r.setSectionId(s.getSection().getId());
-    r.setSectionName(s.getSection().getName());
-}
+            r.setDepartmentId(s.getDepartment().getId());
+            r.setDepartmentName(s.getDepartment().getName());
+        }
+        if (s.getProgram() != null) {
+            r.setProgramId(s.getProgram().getId());
+            r.setProgramName(s.getProgram().getName());
+        }
+        if (s.getSection() != null) {
+            r.setSectionId(s.getSection().getId());
+            r.setSectionName(s.getSection().getName());
+        }
         return r;
     }
 

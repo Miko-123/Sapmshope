@@ -8,11 +8,11 @@ import com.hopesapms.app.model.Program;
 import com.hopesapms.app.model.User;
 import com.hopesapms.app.repository.DepartmentRepository;
 import com.hopesapms.app.repository.ProgramRepository;
-import com.hopesapms.app.repository.UserRepository; // Import this
+import com.hopesapms.app.repository.UserRepository;
 import jakarta.persistence.EntityExistsException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.AccessDeniedException; // Import this
-import org.springframework.security.core.Authentication; // Import this
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,7 +31,29 @@ public class ProgramService {
     @Transactional
     public ProgramResponseDTO createProgram(ProgramRequestDTO dto, Authentication authentication) {
 
-        checkUserAuthorityForDepartment(authentication, dto.getDepartmentId(), "create program in");
+        User user = getUserFromAuth(authentication);
+        Department targetDepartment = null;
+
+        boolean isSystemAdmin = user.getRoles().stream().anyMatch(r -> "SYSTEM_ADMIN".equals(r.getName()));
+        boolean isDeptHead = user.getRoles().stream().anyMatch(r -> "DEPARTMENT_HEAD".equals(r.getName()));
+
+        if (isDeptHead) {
+            targetDepartment = user.getDepartment();
+            if (targetDepartment == null) {
+                throw new AccessDeniedException("Your account is not associated with any department.");
+            }
+
+        } else if (isSystemAdmin) {
+
+            if (dto.getDepartmentId() == null) {
+                throw new IllegalArgumentException("Department ID is required for System Admin.");
+            }
+            targetDepartment = departmentRepository.findByIdAndIsDeletedFalse(dto.getDepartmentId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Department not found"));
+
+        } else {
+            throw new AccessDeniedException("You do not have permission to create programs.");
+        }
 
         if (programRepository.existsByCodeAndIsDeletedFalse(dto.getCode())) {
             throw new EntityExistsException("Program code already exists: " + dto.getCode());
@@ -40,14 +62,10 @@ public class ProgramService {
             throw new EntityExistsException("Program name already exists: " + dto.getName());
         }
 
-        Department department = departmentRepository.findByIdAndIsDeletedFalse(dto.getDepartmentId())
-                .orElseThrow(() -> new ResourceNotFoundException("Department not found"));
-
-        // --- 3. Create, Save, and Log ---
         Program program = Program.builder()
                 .name(dto.getName())
                 .code(dto.getCode())
-                .department(department)
+                .department(targetDepartment)
                 .totalCreditRequired(dto.getTotalCreditRequired())
                 .description(dto.getDescription())
                 .build();
@@ -66,6 +84,17 @@ public class ProgramService {
                 .map(this::mapToResponseDTO)
                 .collect(Collectors.toList());
 
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProgramResponseDTO> getMyDepartmentPrograms(Authentication authentication) {
+        User user = getUserFromAuth(authentication);
+
+        if (user.getDepartment() == null) {
+            throw new AccessDeniedException(("You are not associated with any department."));
+        }
+
+        return getProgramsByDepartmentId(user.getDepartment().getId());
     }
 
     @Transactional(readOnly = true)
@@ -124,26 +153,27 @@ public class ProgramService {
     }
 
     private User getUserFromAuth(Authentication authentication) {
-        return userRepository.findByEmailAndIsDeletedFalse(authentication.getName())
-                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
+        String identity = authentication.getName();
+        return userRepository.findByEmailAndIsDeletedFalse(identity)
+                .or(() -> userRepository.findByUsernameAndIsDeletedFalse(identity))
+                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found." + identity));
     }
 
-    private void checkUserAuthorityForDepartment(Authentication authentication, Long departmentId, String action) {
+    private void checkUserAuthorityForDepartment(Authentication authentication, Long resourceDepartmentId,
+            String action) {
         User user = getUserFromAuth(authentication);
 
-        boolean isSystemAdmin = user.getRoles().stream()
-                .anyMatch(role -> "SYSTEM_ADMIN".equals(role.getName()));
+        boolean isSystemAdmin = user.getRoles().stream().anyMatch(role -> "SYSTEM_ADMIN".equals(role.getName()));
         if (isSystemAdmin)
             return;
 
-        boolean isDeptHead = user.getRoles().stream()
-                .anyMatch(role -> "DEPARTMENT_HEAD".equals(role.getName()));
+        boolean isDeptHead = user.getRoles().stream().anyMatch(role -> "DEPARTMENT_HEAD".equals(role.getName()));
 
-        if (isDeptHead && user.getDepartment() != null && user.getDepartment().getId().equals(departmentId)) {
+        if (isDeptHead && user.getDepartment() != null && user.getDepartment().getId().equals(resourceDepartmentId)) {
             return;
         }
 
-        throw new AccessDeniedException("You do not have permission to " + action + " this department.");
+        throw new AccessDeniedException("You do not have permission to " + action + " this department's data.");
     }
 
     private ProgramResponseDTO mapToResponseDTO(Program entity) {

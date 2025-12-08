@@ -1,8 +1,10 @@
 package com.hopesapms.app.controller;
 
+import com.hopesapms.app.dto.BulkCourseOfferingRequestDTO;
 import com.hopesapms.app.dto.CourseOfferingRequestDTO;
 import com.hopesapms.app.dto.CourseOfferingResponseDTO;
-import com.hopesapms.app.dto.CourseOfferingSearchResultDTO;
+import com.hopesapms.app.dto.UpdateScheduleRequestDTO;
+import com.hopesapms.app.model.Room;
 import com.hopesapms.app.service.CourseOfferingService;
 import com.hopesapms.app.service.CourseOfferingImportService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -41,7 +43,37 @@ public class CourseOfferingController {
         return new ResponseEntity<>(created, HttpStatus.CREATED);
     }
 
-    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping("/bulk-create")
+    @PreAuthorize("hasAnyAuthority('DEPARTMENT_HEAD', 'SYSTEM_ADMIN')")
+    @Operation(summary = "Create a new course offering bulk")
+    public ResponseEntity<List<CourseOfferingResponseDTO>> createBulkOfferings(
+            @RequestBody BulkCourseOfferingRequestDTO dto,
+            Authentication authentication) {
+        return ResponseEntity.ok(courseOfferingService.createBulkOfferings(dto, authentication));
+    }
+
+     @PutMapping("/{id}/schedule")
+    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'PROGRAM_OFFICER')")
+    @Operation(summary = "Update schedule slots and status (Program Officer)")
+    public ResponseEntity<CourseOfferingResponseDTO> updateSchedule(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateScheduleRequestDTO dto) {
+        
+        CourseOfferingResponseDTO updated = courseOfferingService.updateCourseSchedule(id, dto);
+        return ResponseEntity.ok(updated);
+    }
+
+    @GetMapping("/available-rooms")
+    @PreAuthorize("hasAnyAuthority('PROGRAM_OFFICER', 'SYSTEM_ADMIN')")
+    public ResponseEntity<List<Room>> getAvailableRooms(
+            @RequestParam Long semesterId,
+            @RequestParam String day,
+            @RequestParam String periods) {
+        
+        return ResponseEntity.ok(courseOfferingService.getAvailableRooms(semesterId, day, periods));
+    }
+
+   /*  @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN','DEPARTMENT_HEAD', 'PROGRAM_OFFICER')")
     @Operation(summary = "Import course offerings from an Excel file")
     public ResponseEntity<Map<String, Object>> importOfferings(
@@ -59,7 +91,7 @@ public class CourseOfferingController {
         
         return ResponseEntity.ok(result);
     }
-    
+    */
     @GetMapping("/by-semester/{semesterId}")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get all course offerings for a specific semester")

@@ -1,9 +1,6 @@
 package com.hopesapms.app.service;
 
-import com.hopesapms.app.dto.BulkEnrollmentRowDTO;
-import com.hopesapms.app.dto.ImportResultDTO;
-import com.hopesapms.app.dto.EnrollmentRequestDTO;
-import com.hopesapms.app.dto.EnrollmentResponseDTO;
+import com.hopesapms.app.dto.*;
 import com.hopesapms.app.exception.ResourceNotFoundException;
 import com.hopesapms.app.model.*;
 import com.hopesapms.app.repository.*;
@@ -14,9 +11,11 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,9 +28,144 @@ public class EnrollmentService {
     private final StudentRepository studentRepository;
     private final ExcelImportService excelImportService;
     private final AuditLogService auditLogService;
-    
-    
-    private final CourseOfferingRepository courseOfferingRepository; 
+    private final CourseOfferingRepository courseOfferingRepository;
+    private final SectionRepository sectionRepository;
+    private final AcademicSemesterRepository semesterRepository; 
+
+   @Transactional
+    public String bulkEnrollSection(BulkEnrollmentRequestDTO dto) {
+        
+        Section section = sectionRepository.findById(dto.getSectionId().intValue())
+                .orElseThrow(() -> new ResourceNotFoundException("Section not found"));
+
+        List<Student> students = studentRepository.findBySection_IdAndIsDeletedFalse(dto.getSectionId().intValue());
+        if (students.isEmpty()) {
+            return "No students found in " + section.getName();
+        }
+
+        // FIX: Explicitly look for BOTH 'ACTIVE' and 'PLANNED'
+        List<String> targetStatuses = List.of("ACTIVE", "PLANNED");
+        
+        List<CourseOffering> offerings = courseOfferingRepository
+                .findBySectionIdAndAcademicSemesterIdAndStatusIn(
+                        dto.getSectionId().intValue(), 
+                        dto.getSemesterId(), 
+                        targetStatuses
+                );
+
+        if (offerings.isEmpty()) {
+            return "No ACTIVE or PLANNED courses found for " + section.getName();
+        }
+
+        int enrollCount = 0;
+        int activatedCount = 0;
+
+        for (Student student : students) {
+            boolean studentEnrolledInSomething = false;
+
+            for (CourseOffering offering : offerings) {
+                // Check duplicate
+                boolean exists = enrollmentRepository.existsByStudentAndCourseOffering(student, offering);
+                
+                if (!exists) {
+                    Enrollment enrollment = Enrollment.builder()
+                            .student(student)
+                            .courseOffering(offering)
+                            .status("ENROLLED")
+                            .enrollmentDate(LocalDate.now())
+                            .isAddStudent(false) 
+                            .build();
+                    
+                    enrollmentRepository.save(enrollment);
+                    enrollCount++;
+                    studentEnrolledInSomething = true;
+                }
+            }
+
+            // Auto-activate logic
+            if (studentEnrolledInSomething && "PENDING".equals(student.getStatus())) {
+                student.setStatus("ACTIVE");
+                studentRepository.save(student);
+                activatedCount++;
+            }
+        }
+
+        String message = String.format("Sync Complete: Created %d enrollments. Auto-activated %d students.", 
+                enrollCount, activatedCount);
+        
+        auditLogService.log("BULK_ENROLL", "Section", section.getId().longValue(), null, message);
+        return message;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW) 
+    public void enrollSectionInNewOffering(Long offeringId) {
+        
+        CourseOffering offering = courseOfferingRepository.findById(offeringId)
+                .orElseThrow(() -> new ResourceNotFoundException("Course Offering not found"));
+
+        if (offering.getSection() == null) return;
+
+        List<Student> students = studentRepository.findBySectionIdAndIsDeletedFalse(offering.getSection().getId());
+        
+        System.out.println("DEBUG: Found " + students.size() + " students for offering " + offeringId); // Debug Log
+
+        int count = 0;
+        for (Student student : students) {
+            if (!enrollmentRepository.existsByStudentAndCourseOffering(student, offering)) {
+                Enrollment enrollment = Enrollment.builder()
+                        .student(student)
+                        .courseOffering(offering)
+                        .status("ENROLLED")
+                        .enrollmentDate(LocalDate.now())
+                        .isAddStudent(false)
+                        .build();
+                enrollmentRepository.save(enrollment);
+                
+                if ("PENDING".equals(student.getStatus())) {
+                    student.setStatus("ACTIVE");
+                    studentRepository.save(student);
+                }
+                count++;
+            }
+        }
+        System.out.println("Auto-synced " + count + " students into new offering: " + offering.getCourse().getTitle());
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void enrollNewStudentInSection(Student student) {
+        if (student.getSection() == null || student.getProgram() == null) return;
+
+        Long semesterId = getCurrentSemesterId(); // You might need a helper method to get the current semester ID
+        if (semesterId == null) return;
+
+        // Fix: Fetch BOTH Active and Planned courses. Don't wait for the schedule!
+        List<String> validStatuses = List.of("ACTIVE", "PLANNED");
+        List<CourseOffering> offerings = courseOfferingRepository.findBySectionIdAndAcademicSemesterIdAndStatusIn(
+                student.getSection().getId(), 
+                semesterId, 
+                validStatuses
+        );
+
+        int count = 0;
+        for (CourseOffering offering : offerings) {
+            if (!enrollmentRepository.existsByStudentAndCourseOffering(student, offering)) {
+                Enrollment enrollment = Enrollment.builder()
+                        .student(student)
+                        .courseOffering(offering)
+                        .status("ENROLLED")
+                        .enrollmentDate(LocalDate.now())
+                        .isAddStudent(false)
+                        .build();
+                enrollmentRepository.save(enrollment);
+                count++;
+            }
+        }
+
+        if (count > 0 && "PENDING".equals(student.getStatus())) {
+            student.setStatus("ACTIVE");
+            studentRepository.save(student);
+        }
+    }
 
     @Transactional
     public EnrollmentResponseDTO enrollStudent(EnrollmentRequestDTO dto) {
@@ -42,7 +176,6 @@ public class EnrollmentService {
         CourseOffering courseOffering = courseOfferingRepository.findById(dto.getCourseOfferingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Course Offering not found with id: " + dto.getCourseOfferingId()));
 
-        
         enrollmentRepository
                 .findByStudentAndCourseOffering(student.getId(), courseOffering.getId())
                 .ifPresent(e -> {
@@ -83,9 +216,7 @@ public class EnrollmentService {
     public ImportResultDTO bulkEnrollStudents(MultipartFile file) {
         List<BulkEnrollmentRowDTO> rows;
         try {
-            
             rows = excelImportService.parseEnrollments(file);
-            
         } catch (Exception e) {
             throw new IllegalArgumentException("Failed to parse Excel file: " + e.getMessage());
         }
@@ -95,7 +226,6 @@ public class EnrollmentService {
 
         for (int i = 0; i < rows.size(); i++) {
             BulkEnrollmentRowDTO row = rows.get(i);
-           
             String rowIdentifier = "Row " + (i + 2); 
 
             try {
@@ -106,7 +236,6 @@ public class EnrollmentService {
                         .orElseThrow(() -> new ResourceNotFoundException("CourseOffering not found with ID: " + row.getCourseOfferingId()));
 
                 if (enrollmentRepository.existsByStudentAndCourseOffering(student, offering)) {
-                    
                     errors.add(rowIdentifier + ": Student " + row.getStudentId() + " is already enrolled.");
                     continue; 
                 }
@@ -115,6 +244,7 @@ public class EnrollmentService {
                 newEnrollment.setStudent(student);
                 newEnrollment.setCourseOffering(offering);
                 newEnrollment.setStatus("ENROLLED");
+                newEnrollment.setEnrollmentDate(LocalDate.now()); // Added date
                 
                 enrollmentRepository.save(newEnrollment);
                 successfulEnrollments++;
@@ -140,6 +270,13 @@ public class EnrollmentService {
         return enrollmentPage.map(this::mapToResponseDTO);
     }
 
+    private Long getCurrentSemesterId() {
+
+        return semesterRepository.findByIsCurrentTrue()
+                .map(AcademicSemester::getId)
+                .orElse(null); 
+    }
+
     private EnrollmentResponseDTO mapToResponseDTO(Enrollment e) {
         EnrollmentResponseDTO dto = new EnrollmentResponseDTO();
         dto.setEnrollmentId(e.getId());
@@ -148,12 +285,18 @@ public class EnrollmentService {
         dto.setFinalGrade(e.getFinalGrade());
         dto.setAddStudent(e.isAddStudent());
 
-        
         CourseOffering offering = e.getCourseOffering();
         dto.setCourseOfferingId(offering.getId());
         dto.setSemesterName(offering.getAcademicSemester().getName());
-        dto.setInstructorName(offering.getInstructor().getUser().getFirstName() + " " + offering.getInstructor().getUser().getLastName());
-        dto.setSectionName(offering.getSection().getName());
+        
+        if (offering.getInstructor() != null && offering.getInstructor().getUser() != null) {
+            dto.setInstructorName(offering.getInstructor().getUser().getFirstName() + " " + offering.getInstructor().getUser().getLastName());
+        }
+        
+        if (offering.getSection() != null) {
+            dto.setSectionName(offering.getSection().getName());
+        }
+        
         dto.setCourseCode(offering.getCourse().getCourseCode());
         dto.setCourseTitle(offering.getCourse().getTitle());
 

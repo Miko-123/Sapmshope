@@ -14,6 +14,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
 
 @RestController
 @RequestMapping("/api/programs")
@@ -39,6 +42,13 @@ public class ProgramController {
     public ResponseEntity<List<ProgramResponseDTO>> getAllPrograms() {
         return ResponseEntity.ok(programService.getAllPrograms());
     }
+
+    @GetMapping("/my-department")
+    @PreAuthorize("hasAuthority('DEPARTMENT_HEAD')")
+    public ResponseEntity<List<ProgramResponseDTO>> getMyDepartmentPrograms (Authentication authentication) {
+        return ResponseEntity.ok(programService.getMyDepartmentPrograms(authentication));
+    }
+    
 
     @GetMapping("/{id}")
     @PreAuthorize("isAuthenticated()")

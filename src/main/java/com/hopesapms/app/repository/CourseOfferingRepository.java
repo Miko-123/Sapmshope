@@ -14,4 +14,33 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
     List<CourseOffering> findByAcademicSemesterId(Long semesterId);
 
     List<CourseOffering> findByAcademicSemester_IdAndIsDeletedFalse(Long semesterId);
+
+    List<CourseOffering> findBySection_IdAndAcademicSemester_IdAndStatusAndIsDeletedFalse(
+            Integer sectionId,
+            Long semesterId,
+            String status);
+
+    List<CourseOffering> findBySectionIdAndAcademicSemesterIdAndStatusIn(
+            Integer sectionId,
+            Long academicSemesterId,
+            List<String> statuses);
+
+    @Query("SELECT co FROM CourseOffering co " +
+            "JOIN FETCH co.course c " +
+            "JOIN FETCH co.instructor " +
+            "JOIN FETCH co.section " +
+            "JOIN FETCH co.academicSemester " +
+            "WHERE co.academicSemester.id = :semesterId " +
+            "AND c.department.id = :departmentId " +
+            "AND co.isDeleted = false")
+    List<CourseOffering> findBySemesterAndDepartment(Long semesterId, Long departmentId);
+
+    @Query("SELECT DISTINCT co FROM CourseOffering co " +
+            "LEFT JOIN FETCH co.scheduleSlots " +
+            "JOIN FETCH co.instructor " +
+            "JOIN FETCH co.section " +
+            "WHERE co.academicSemester.id = :semesterId " +
+            "AND co.status = :status " +
+            "AND co.isDeleted = false")
+    List<CourseOffering> findAllActiveInSemester(Long semesterId, String status);
 }

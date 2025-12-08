@@ -11,6 +11,7 @@ public class SectionResponseDTO {
     private Integer capacity;
     private Long programId;
     private String programName;
+    private String departmentName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

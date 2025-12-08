@@ -26,12 +26,15 @@ public class CourseOfferingResponseDTO {
     private String semesterName;
 
     // Instructor Details
-    private Integer instructorId;
+    private Long instructorId;
     private String instructorName;
+
+    private String departmentName;
 
     // Section Details
     private Integer sectionId;
     private String sectionName;
+    private Integer sectionYearLevel;
 
     private LocalDateTime createdAt;
 }

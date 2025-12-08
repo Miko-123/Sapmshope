@@ -18,7 +18,7 @@ public class CourseOfferingRequestDTO {
     private Long academicSemesterId;
 
     @NotNull
-    private Integer instructorId;
+    private Long instructorId;
 
     @NotNull
     @Size(min = 1, message = "At least one year level must be selected")

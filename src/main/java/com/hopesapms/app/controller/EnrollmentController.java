@@ -1,8 +1,10 @@
 package com.hopesapms.app.controller;
 
+import com.hopesapms.app.dto.BulkEnrollmentRequestDTO;
 import com.hopesapms.app.dto.EnrollmentRequestDTO;
 import com.hopesapms.app.dto.EnrollmentResponseDTO;
 import com.hopesapms.app.dto.ImportResultDTO;
+import com.hopesapms.app.dto.MessageResponseDTO;
 import com.hopesapms.app.service.EnrollmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,6 +37,13 @@ public class EnrollmentController {
         
         ImportResultDTO result = enrollmentService.bulkEnrollStudents(file);
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/bulk")
+    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'REGISTRAR')")
+    public ResponseEntity<MessageResponseDTO> bulkEnroll(@RequestBody BulkEnrollmentRequestDTO dto) {
+        String result = enrollmentService.bulkEnrollSection(dto);
+        return ResponseEntity.ok(new MessageResponseDTO(result));
     }
 
     @PostMapping("/registrar")
