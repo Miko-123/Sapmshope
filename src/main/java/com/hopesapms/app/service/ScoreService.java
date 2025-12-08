@@ -11,6 +11,7 @@ import com.hopesapms.app.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Page;
@@ -27,171 +28,200 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ScoreService {
 
-    private final ScoreRepository scoreRepository;
-    private final EnrollmentRepository enrollmentRepository;
-    private final AssessmentRepository assessmentRepository;
-    private final UserRepository userRepository;
-    private final StudentRepository studentRepository;
-    private final AuditLogService auditLogService;
+        private final ScoreRepository scoreRepository;
+        private final EnrollmentRepository enrollmentRepository;
+        private final AssessmentRepository assessmentRepository;
+        private final UserRepository userRepository;
+        private final StudentRepository studentRepository;
+        private final AuditLogService auditLogService;
+        private final InstructorRepository instructorRepository;
 
-    @Transactional
-    public ScoreResponseDTO enterScore(ScoreRequestDTO dto, Authentication authentication) {
+        @Transactional
+        public List<ScoreResponseDTO> enterScore(List<ScoreRequestDTO> dtoList, Authentication authentication) {
 
-        User instructor = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
-                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                String username = auth.getName();
 
-        Enrollment enrollment = enrollmentRepository.findById(dto.getEnrollmentId())
-                .orElseThrow(
-                        () -> new ResourceNotFoundException("Enrollment not found with id: " + dto.getEnrollmentId()));
+                Instructor instructor = instructorRepository.findByUserUsername(username)
+                                .orElseThrow(() -> new RuntimeException("Instructor not found for current user"));
 
-        Assessment assessment = assessmentRepository.findByIdAndIsDeletedFalse(dto.getAssessmentId())
-                .orElseThrow(
-                        () -> new ResourceNotFoundException("Assessment not found with id: " + dto.getAssessmentId()));
+                List<ScoreResponseDTO> responses = new ArrayList<>();
 
-        checkUserAuthorityForCourse(instructor, assessment.getCourse().getDepartment().getId(), "enter score for");
+                for (ScoreRequestDTO dto : dtoList) {
 
-        if (dto.getScoreValue().compareTo(assessment.getMaxScore()) > 0) {
-            throw new IllegalArgumentException("Score (" + dto.getScoreValue()
-                    + ") cannot be greater than the assessment's max score (" + assessment.getMaxScore() + ")");
+                        Enrollment enrollment = enrollmentRepository.findById(dto.getEnrollmentId())
+                                        .orElseThrow(() -> new ResourceNotFoundException(
+                                                        "Enrollment not found with id: " + dto.getEnrollmentId()));
+
+                        Assessment assessment = assessmentRepository.findByIdAndIsDeletedFalse(dto.getAssessmentId())
+                                        .orElseThrow(() -> new ResourceNotFoundException(
+                                                        "Assessment not found with id: " + dto.getAssessmentId()));
+
+                        checkUserAuthorityForCourse(
+                                        instructor,
+                                        assessment.getCourse().getDepartment().getId(),
+                                        "enter score for");
+
+                        if (dto.getScoreValue().compareTo(assessment.getMaxScore()) > 0) {
+                                throw new IllegalArgumentException(
+                                                "Score (" + dto.getScoreValue() + ") cannot exceed max score ("
+                                                                + assessment.getMaxScore() + ")");
+                        }
+
+                        Score saved = saveOrUpdateScore(enrollment, assessment, dto.getScoreValue(), instructor);
+
+                        responses.add(mapToResponseDTO(saved));
+                }
+
+                return responses;
         }
 
-        Optional<Score> existingScoreOpt = scoreRepository
-                .findByEnrollment_IdAndAssessment_IdAndIsDeletedFalse(dto.getEnrollmentId(), dto.getAssessmentId());
+        @Transactional(readOnly = true)
+        public Page<ScoreResponseDTO> getSectionScores(
+                        Integer sectionId,
+                        String courseTitle,
+                        Pageable pageable) {
+                String username = SecurityContextHolder.getContext().getAuthentication().getName();
 
-        Score score;
-        String oldData = null;
-        String action = "ENTER_SCORE";
-
-        if (existingScoreOpt.isPresent()) {
-            score = existingScoreOpt.get();
-            oldData = score.toString();
-            action = "UPDATE_SCORE";
-
-            score.setOriginalScoreValue(score.getScoreValue()); // Archive old score
-            score.setScoreValue(dto.getScoreValue());
-            score.setOverriden(true);
-
-        } else {
-            score = Score.builder()
-                    .enrollment(enrollment)
-                    .assessment(assessment)
-                    .scoreValue(dto.getScoreValue())
-                    .isOverriden(false)
-                    .build();
+                return scoreRepository.getStudentScores(sectionId, username, courseTitle, pageable);
         }
 
-        score.setRecordedBy(instructor);
-        score.setRecordedDate(LocalDateTime.now());
+        // Changed the how checkUserAuthorityForCourse works, instead of checking for
+        // the user it checks for the instructor i believe, havent tested yet
+        @Transactional
+        public BulkUploadResponse bulkEnterScores(BulkScoreRequestDTO bulkDto, Authentication authentication) {
 
-        Score savedScore = scoreRepository.save(score);
-        auditLogService.log(action, "Score", savedScore.getId().longValue(), oldData, savedScore.toString());
+                Instructor instructor = instructorRepository
+                                .findByUserUsernameAndUserIsDeletedFalse(authentication.getName())
+                                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
 
-        return mapToResponseDTO(savedScore);
-    }
+                Assessment assessment = assessmentRepository.findByIdAndIsDeletedFalse(bulkDto.getAssessmentId())
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Assessment not found with id: " + bulkDto.getAssessmentId()));
 
-    @Transactional
-    public BulkUploadResponse bulkEnterScores(BulkScoreRequestDTO bulkDto, Authentication authentication) {
+                checkUserAuthorityForCourse(instructor, assessment.getCourse().getDepartment().getId(),
+                                "bulk enter scores for");
 
-        User instructor = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
-                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
+                List<String> errors = new ArrayList<>();
+                int successCount = 0;
+                int failedCount = 0;
 
-        Assessment assessment = assessmentRepository.findByIdAndIsDeletedFalse(bulkDto.getAssessmentId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Assessment not found with id: " + bulkDto.getAssessmentId()));
+                for (BulkScoreRequestDTO.StudentScoreEntry entry : bulkDto.getScores()) {
+                        try {
+                                ScoreRequestDTO singleDto = new ScoreRequestDTO();
+                                singleDto.setEnrollmentId(entry.getEnrollmentId());
+                                singleDto.setAssessmentId(bulkDto.getAssessmentId());
+                                singleDto.setScoreValue(entry.getScoreValue());
 
-        checkUserAuthorityForCourse(instructor, assessment.getCourse().getDepartment().getId(),
-                "bulk enter scores for");
+                                enterScore(singleDto, authentication);
+                                successCount++;
 
-        List<String> errors = new ArrayList<>();
-        int successCount = 0;
-        int failedCount = 0;
+                        } catch (Exception e) {
+                                failedCount++;
+                                errors.add("EnrollmentID " + entry.getEnrollmentId() + ": FAILED | Error: "
+                                                + e.getMessage());
+                        }
+                }
 
-        for (BulkScoreRequestDTO.StudentScoreEntry entry : bulkDto.getScores()) {
-            try {
-                ScoreRequestDTO singleDto = new ScoreRequestDTO();
-                singleDto.setEnrollmentId(entry.getEnrollmentId());
-                singleDto.setAssessmentId(bulkDto.getAssessmentId());
-                singleDto.setScoreValue(entry.getScoreValue());
+                BulkUploadResponse response = new BulkUploadResponse();
+                response.setSuccessCount(successCount);
+                response.setFailedCount(failedCount);
+                response.setErrors(errors);
 
-                enterScore(singleDto, authentication);
-                successCount++;
-
-            } catch (Exception e) {
-                failedCount++;
-                errors.add("EnrollmentID " + entry.getEnrollmentId() + ": FAILED | Error: " + e.getMessage());
-            }
+                auditLogService.log("BULK_ENTER_SCORES", "Score", assessment.getId().longValue(), null,
+                                "Success: " + successCount + ", Failed: " + failedCount);
+                return response;
         }
 
-        BulkUploadResponse response = new BulkUploadResponse();
-        response.setSuccessCount(successCount);
-        response.setFailedCount(failedCount);
-        response.setErrors(errors);
+        // Change this so that only the instructor assigned to the course can
+        // enter/update scores
+        private void checkUserAuthorityForCourse(Instructor instructor, Long departmentId, String action) {
+                boolean isSystemAdmin = instructor.getUser().getRoles().stream()
+                                .anyMatch(role -> "SYSTEM_ADMIN".equals(role.getName()));
+                if (isSystemAdmin)
+                        return;
 
-        auditLogService.log("BULK_ENTER_SCORES", "Score", assessment.getId().longValue(), null,
-                "Success: " + successCount + ", Failed: " + failedCount);
-        return response;
-    }
+                boolean isInstructor = instructor.getUser().getRoles().stream()
+                                .anyMatch(role -> "INSTRUCTOR".equals(role.getName()));
+                boolean isDeptHead = instructor.getUser().getRoles().stream()
+                                .anyMatch(role -> "DEPARTMENT_HEAD".equals(role.getName()));
 
-    private void checkUserAuthorityForCourse(User user, Long departmentId, String action) {
-        boolean isSystemAdmin = user.getRoles().stream()
-                .anyMatch(role -> "SYSTEM_ADMIN".equals(role.getName()));
-        if (isSystemAdmin)
-            return;
-
-        boolean isInstructor = user.getRoles().stream()
-                .anyMatch(role -> "INSTRUCTOR".equals(role.getName()));
-        boolean isDeptHead = user.getRoles().stream()
-                .anyMatch(role -> "DEPARTMENT_HEAD".equals(role.getName()));
-
-        if ((isInstructor || isDeptHead) && user.getDepartment() != null
-                && user.getDepartment().getId().equals(departmentId)) {
-            return;
+                if ((isInstructor || isDeptHead) && instructor.getUser().getDepartment() != null
+                                && instructor.getUser().getDepartment().getId().equals(departmentId)) {
+                        return;
+                }
+                throw new AccessDeniedException("You do not have permission to " + action + " this course.");
         }
-        throw new AccessDeniedException("You do not have permission to " + action + " this course.");
-    }
 
-    @Transactional(readOnly = true)
-    public List<StudentScoreDTO> getMyScoresForCourse(Integer courseId, Authentication authentication) {
+        @Transactional(readOnly = true)
+        public List<StudentScoreDTO> getMyScoresForCourse(Integer courseId, Authentication authentication) {
 
-        User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
-                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
+                User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
+                                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
 
-        Student student = studentRepository.findByUserId(user.getId())
-                .orElseThrow(() -> new AccessDeniedException("This user is not a student."));
+                Student student = studentRepository.findByUserId(user.getId())
+                                .orElseThrow(() -> new AccessDeniedException("This user is not a student."));
 
-        Page<Score> scores = scoreRepository.findByStudentAndCourse(student.getId(), courseId, Pageable.unpaged());
+                Page<Score> scores = scoreRepository.findByStudentAndCourse(student.getId(), courseId,
+                                Pageable.unpaged());
 
-        return scores.stream()
-                .map(this::mapToStudentScoreDTO)
-                .collect(Collectors.toList());
-    }
+                return scores.stream()
+                                .map(this::mapToStudentScoreDTO)
+                                .collect(Collectors.toList());
+        }
 
-    private StudentScoreDTO mapToStudentScoreDTO(Score s) {
-        StudentScoreDTO dto = new StudentScoreDTO();
+        private StudentScoreDTO mapToStudentScoreDTO(Score s) {
+                StudentScoreDTO dto = new StudentScoreDTO();
 
-        Assessment assessment = s.getAssessment();
-        dto.setAssessmentName(assessment.getName());
-        dto.setAssessmentType(assessment.getType());
-        dto.setMaxScore(assessment.getMaxScore());
+                Assessment assessment = s.getAssessment();
+                dto.setAssessmentName(assessment.getName());
+                dto.setAssessmentType(assessment.getType());
+                dto.setMaxScore(assessment.getMaxScore());
 
-        dto.setScoreId(s.getId());
-        dto.setScoreValue(s.getScoreValue());
-        dto.setRecordedDate(s.getRecordedDate());
-        dto.setRecordedBy(s.getRecordedBy().getUsername());
+                dto.setScoreId(s.getId());
+                dto.setScoreValue(s.getScoreValue());
 
-        return dto;
-    }
+                // dto.setRecordedBy(s.getRecordedBy().getUsername());
 
-    private ScoreResponseDTO mapToResponseDTO(Score s) {
-        ScoreResponseDTO dto = new ScoreResponseDTO();
-        dto.setId(s.getId());
-        dto.setEnrollmentId(s.getEnrollment().getId());
-        dto.setAssessmentId(s.getAssessment().getId());
-        dto.setScoreValue(s.getScoreValue());
-        dto.setRecordedByUsername(s.getRecordedBy().getUsername());
-        dto.setRecordedDate(s.getRecordedDate());
-        dto.setOverriden(s.isOverriden());
-        dto.setOriginalScoreValue(s.getOriginalScoreValue());
-        return dto;
-    }
+                return dto;
+        }
+
+        private ScoreResponseDTO mapToResponseDTO(Score s) {
+                ScoreResponseDTO dto = new ScoreResponseDTO();
+                dto.setId(s.getId());
+                dto.setEnrollmentId(s.getEnrollment().getId());
+                dto.setAssessmentId(s.getAssessment().getId());
+                dto.setScoreValue(s.getScoreValue());
+                // dto.setRecordedByUsername(s.getRecordedBy().getUsername());
+                dto.setOverriden(s.isOverriden());
+                dto.setOriginalScoreValue(s.getOriginalScoreValue());
+                return dto;
+        }
+
+        private Score saveOrUpdateScore(
+                        Enrollment enrollment,
+                        Assessment assessment,
+                        BigDecimal scoreValue,
+                        Instructor instructor) {
+                Optional<Score> existingScore = scoreRepository.findByEnrollmentAndAssessment(enrollment, assessment);
+
+                Score score;
+
+                if (existingScore.isPresent()) {
+                        score = existingScore.get();
+                        score.setScoreValue(scoreValue);
+                        score.setUpdatedAt(LocalDateTime.now());
+                } else {
+                        score = new Score();
+                        score.setEnrollment(enrollment);
+                        score.setAssessment(assessment);
+                        score.setScoreValue(scoreValue);
+                        score.setRecordedBy(instructor);
+                        score.setCreatedAt(LocalDateTime.now());
+                        score.setRecordedDate(LocalDateTime.now());
+                }
+
+                return scoreRepository.save(score);
+
+        }
 }

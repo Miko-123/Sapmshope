@@ -33,18 +33,17 @@ public class CourseController {
     @Operation(summary = "Create a single new course")
     public ResponseEntity<CourseResponseDTO> createCourse(
             @Valid @RequestBody CourseRequestDTO dto, Authentication authentication) {
-        
+
         CourseResponseDTO created = courseService.createCourse(dto, authentication);
         return new ResponseEntity<>(created, HttpStatus.CREATED);
     }
 
     @PostMapping("/bulk")
     @PreAuthorize("hasAuthority('DEPARTMENT_HEAD')")
-    @Operation(summary = "Bulk-create courses for the Department Head's department",
-                 description = "Takes a list of courses. The departmentId on all DTOs will be *ignored* and replaced with the user's assigned department.")
+    @Operation(summary = "Bulk-create courses for the Department Head's department", description = "Takes a list of courses. The departmentId on all DTOs will be *ignored* and replaced with the user's assigned department.")
     public ResponseEntity<List<CourseResponseDTO>> bulkCreateCourses(
             @Valid @RequestBody List<CourseRequestDTO> dtoList, Authentication authentication) {
-        
+
         List<CourseResponseDTO> created = courseService.bulkCreateCourses(dtoList, authentication);
         return new ResponseEntity<>(created, HttpStatus.CREATED);
     }
@@ -55,8 +54,17 @@ public class CourseController {
     public ResponseEntity<Page<CourseResponseDTO>> getCoursesByDepartment(
             @PathVariable Long departmentId,
             @Parameter(hidden = true) Pageable pageable) {
-        
+
         Page<CourseResponseDTO> courses = courseService.getCoursesByDepartment(departmentId, pageable);
+        return ResponseEntity.ok(courses);
+    }
+
+    @GetMapping("/by-instructor/")
+    @PreAuthorize("hasAuthority('INSTRUCTOR')")
+    @Operation(summary = "Get a paginated list of courses for an instructor")
+    public ResponseEntity<List<CourseResponseDTO>> getCoursesByInstructorId(Authentication authentication) {
+        String username = authentication.getName(); 
+        List<CourseResponseDTO> courses = courseService.getCoursesByInstructorUsername(username);
         return ResponseEntity.ok(courses);
     }
 

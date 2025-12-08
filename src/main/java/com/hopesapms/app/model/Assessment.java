@@ -8,6 +8,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Set;
 
 @Entity
 @Table(name = "assessment")
@@ -25,9 +26,10 @@ public class Assessment {
     @JoinColumn(name = "course_id", nullable = false)
     private Course course;
 
+    // Change to instructor id instead of user id for easier readability maybe...(do research later)
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User userId;
+    @JoinColumn(name = "instructor_id", nullable = false)
+    private Instructor instructorId;
 
     @Column(length = 255, nullable = false)
     private String name;
@@ -65,4 +67,7 @@ public class Assessment {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @OneToMany(mappedBy = "assessment", fetch = FetchType.LAZY)
+    private Set<Score> scores;
 }

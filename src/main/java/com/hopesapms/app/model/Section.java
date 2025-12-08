@@ -6,6 +6,8 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "sections", uniqueConstraints = {
@@ -23,7 +25,7 @@ public class Section {
     private Integer id;
 
     @Column(length = 50, nullable = false)
-    private String name; // e.g. "Section 1"
+    private String name;
 
     @Column(name = "year_level", nullable = false)
     private Integer yearLevel;
@@ -35,6 +37,9 @@ public class Section {
     @Column(name = "is_deleted", nullable = false)
     @Builder.Default
     private boolean isDeleted = false;
+
+    // @Column(name="enrollment_id", nullable = false)
+    // private Enrollment enrollmentId;
 
     @CreationTimestamp
     private LocalDateTime createdAt;

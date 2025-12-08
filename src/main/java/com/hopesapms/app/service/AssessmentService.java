@@ -53,7 +53,8 @@ public class AssessmentService {
             throw new AccessDeniedException("Only Department Heads or Admins can create 'Base' assessments.");
         }
         Assessment assessment = Assessment.builder()
-                .userId(user)
+        //Fix the instructor and user swap issue
+                // .userId(user)
                 .course(course)
                 .name(dto.getName())
                 .type(dto.getType())
@@ -87,7 +88,8 @@ public class AssessmentService {
 
         String oldData = assessment.toString();
 
-        assessment.setUserId(assessment.getUserId());
+        //Fix the instructor and user swap issue
+        // assessment.setUserId(assessment.getUserId());
         assessment.setName(dto.getName());
         assessment.setType(dto.getType());
         assessment.setMaxScore(dto.getMaxScore());

@@ -5,8 +5,11 @@ import com.hopesapms.app.model.*;
 import com.hopesapms.app.repository.*;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -203,7 +206,7 @@ public class StudentService {
     }
 
     @Transactional(readOnly = true)
-    public Page<StudentResponse> getAllStudents(String search, Pageable pageable) {
+    public Page<StudentResponse> getAllStudents(String search, @ParameterObject @PageableDefault(size = 10, page = 0) Pageable pageable) {
         if (search != null && !search.isBlank()) {
             return studentRepository.searchStudents(search, pageable).map(this::mapToResponse);
         }

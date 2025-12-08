@@ -33,7 +33,7 @@ public class Score {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "recorded_by_id", nullable = false)
-    private User recordedBy;
+    private Instructor recordedBy;
 
     @Column(name = "recorded_date", nullable = false)
     private LocalDateTime recordedDate;

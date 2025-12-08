@@ -1,5 +1,8 @@
 package com.hopesapms.app.dto;
 
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -12,6 +15,10 @@ import java.time.LocalDateTime;
 
 @Data
 public class AssessmentRequestDTO {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
 
     @NotNull(message = "User ID is required")
     private Integer userId;
