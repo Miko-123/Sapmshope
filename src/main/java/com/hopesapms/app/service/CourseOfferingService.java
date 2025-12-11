@@ -15,8 +15,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.context.ApplicationEventPublisher;
-import com.hopesapms.app.event.CourseOfferingCreatedEvent;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -36,7 +37,8 @@ public class CourseOfferingService {
         private final AuditLogService auditLogService;
         private final UserRepository userRepository;
         private final RoomRepository roomRepository;
-        private final ApplicationEventPublisher eventPublisher;
+        @Lazy
+        private final EnrollmentService enrollmentService;
 
         @Transactional
         public CourseOfferingResponseDTO createCourseOffering(CourseOfferingRequestDTO dto,
@@ -49,7 +51,7 @@ public class CourseOfferingService {
                 checkUserAuthorityForDepartment(loggedInUser, course.getDepartment().getId());
                 AcademicSemester semester = academicSemesterRepository.findById(dto.getAcademicSemesterId())
                                 .orElseThrow(() -> new ResourceNotFoundException("AcademicSemester not found"));
-                Instructor instructor = instructorRepository.findByUser_Id(dto.getInstructorId())
+                Instructor instructor = instructorRepository.findByUser_Id(dto.getInstructorId().intValue())
                                 .orElseThrow(() -> new ResourceNotFoundException("Instructor not found"));
                 Section section = sectionRepository.findById(dto.getSectionId())
                                 .orElseThrow(() -> new ResourceNotFoundException("Section not found"));
@@ -72,7 +74,16 @@ public class CourseOfferingService {
                 CourseOffering saved = courseOfferingRepository.save(offering);
                 auditLogService.log("CREATE_COURSE_OFFERING", "CourseOffering", saved.getId(), null, saved.toString());
 
-                eventPublisher.publishEvent(new CourseOfferingCreatedEvent(this, saved.getId()));
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                                try {
+                                        enrollmentService.enrollSectionInNewOffering(saved.getId());
+                                } catch (Exception e) {
+                                        System.err.println("Auto-enroll failed: " + e.getMessage());
+                                }
+                        }
+                });
 
                 return mapToResponseDTO(saved);
         }
@@ -96,7 +107,7 @@ public class CourseOfferingService {
 
                 for (BulkCourseOfferingRequestDTO.SectionInstructorPair pair : dto.getAssignments()) {
 
-                        Instructor instructor = instructorRepository.findByUser_Id(pair.getInstructorId())
+                        Instructor instructor = instructorRepository.findByUser_Id(pair.getInstructorId().intValue())
                                         .orElseThrow(() -> new ResourceNotFoundException(
                                                         "Instructor not found for ID: " + pair.getInstructorId()));
 
@@ -119,6 +130,22 @@ public class CourseOfferingService {
 
                 auditLogService.log("BULK_CREATE_OFFERING", "CourseOffering", 0L, null,
                                 "Created " + savedOfferings.size() + " offerings for " + course.getCourseCode());
+
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                                for (CourseOffering saved : savedOfferings) {
+                                        try {
+                                                System.out.println(">>> Auto-Syncing Enrollment for Offering ID: "
+                                                                + saved.getId());
+                                                enrollmentService.enrollSectionInNewOffering(saved.getId());
+                                        } catch (Exception e) {
+                                                System.err.println("Auto-enroll failed for offering " + saved.getId()
+                                                                + ": " + e.getMessage());
+                                        }
+                                }
+                        }
+                });
 
                 return savedOfferings.stream()
                                 .map(this::mapToResponseDTO)

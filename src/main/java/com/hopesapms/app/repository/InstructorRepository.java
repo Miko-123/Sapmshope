@@ -8,5 +8,5 @@ import java.util.Optional;
 @Repository
 public interface InstructorRepository extends JpaRepository<Instructor, Long> {
 
-    Optional<Instructor> findByUser_Id(Long userId);
+    Optional<Instructor> findByUser_Id(Integer userId);
 }

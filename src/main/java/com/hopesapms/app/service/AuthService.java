@@ -13,8 +13,6 @@ import com.hopesapms.app.dto.JwtResponse;
 import com.hopesapms.app.dto.LoginRequest;
 import com.hopesapms.app.model.User;
 import com.hopesapms.app.repository.UserRepository;
-import com.hopesapms.app.util.JwtUtil;
-
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;

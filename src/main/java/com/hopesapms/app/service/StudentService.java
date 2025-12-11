@@ -10,12 +10,14 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.context.ApplicationEventPublisher;
 import com.hopesapms.app.event.StudentRegisteredEvent;
+import com.hopesapms.app.exception.ResourceNotFoundException;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -35,7 +37,11 @@ public class StudentService {
     private final JavaMailSender mailSender;
     private final AuditLogService auditLogService;
     private final SectionRepository sectionRepository;
-    
+    private final EnrollmentRepository enrollmentRepository;
+    private final AssessmentRepository assessmentRepository;
+    private final ScoreRepository scoreRepository;
+    private final AttendanceRepository attendanceRepository;
+    private final GradingService gradingService;
 
     private final ApplicationEventPublisher eventPublisher;
 
@@ -174,39 +180,198 @@ public class StudentService {
         return mapToUserResponse(user);
     }
 
-    /*
-     * @Transactional
-     * public UserResponse completeStudentProfile(CompleteProfileRequest request) {
-     * User user = userRepository.findByEmailAndIsDeletedFalse(request.getEmail())
-     * .orElseThrow(() -> new EntityNotFoundException("User not found"));
-     * 
-     * if (user.getPassword() != null)
-     * throw new IllegalArgumentException("Profile already completed");
-     * 
-     * if (userRepository.existsByUsernameAndIsDeletedFalse(request.getUsername()))
-     * throw new IllegalArgumentException("Username already taken");
-     * 
-     * if (!PASSWORD_PATTERN.matcher(request.getPassword()).matches())
-     * throw new
-     * IllegalArgumentException("Password must be at least 8 characters with letters and numbers"
-     * );
-     * 
-     * if (request.getPhoneNumber() != null &&
-     * !PHONE_PATTERN.matcher(request.getPhoneNumber()).matches())
-     * throw new IllegalArgumentException("Invalid phone number format");
-     * 
-     * user.setUsername(request.getUsername());
-     * user.setPassword(passwordEncoder.encode(request.getPassword()));
-     * user.setPhoneNumber(request.getPhoneNumber());
-     * if (request.getGender() != null)
-     * user.setGender(User.Gender.valueOf(request.getGender()));
-     * 
-     * user = userRepository.save(user);
-     * auditLogService.log("COMPLETE_PROFILE", "User", user.getId(), null,
-     * user.toString());
-     * return mapToUserResponse(user);
-     * }
-     */
+    @Transactional(readOnly = true)
+    public List<StudentCourseDTO> getMyActiveCourses(Authentication authentication) {
+        Student student = getStudentFromAuth(authentication);
+        List<Enrollment> enrollments = enrollmentRepository.findByStudent_IdAndStatus(student.getId().longValue(),
+                "ENROLLED");
+        return enrollments.stream()
+                .map(this::mapToStudentCourseDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public StudentCourseDetailDTO getCourseDetails(Long enrollmentId, Authentication authentication) {
+        Student student = getStudentFromAuth(authentication);
+
+        Enrollment enrollment = enrollmentRepository.findById(enrollmentId.intValue())
+                .orElseThrow(() -> new ResourceNotFoundException("Enrollment not found"));
+
+        if (!enrollment.getStudent().getId().equals(student.getId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Unauthorized access to this enrollment.");
+        }
+
+        StudentCourseDetailDTO dto = new StudentCourseDetailDTO();
+        dto.setEnrollmentId(enrollment.getId().longValue());
+
+        CourseOffering offering = enrollment.getCourseOffering();
+        dto.setCourseTitle(offering.getCourse().getTitle());
+        dto.setCourseCode(offering.getCourse().getCourseCode());
+
+        if (offering.getInstructor() != null && offering.getInstructor().getUser() != null) {
+            User u = offering.getInstructor().getUser();
+            dto.setInstructorName(u.getFirstName() + " " + u.getLastName());
+        } else {
+            dto.setInstructorName("TBD");
+        }
+
+        List<Assessment> courseAssessments = assessmentRepository.findByCourse_IdAndIsDeletedFalse(
+                offering.getCourse().getId().intValue());
+
+        double totalScore = 0.0;
+        double totalMaxWeight = 0.0;
+
+        for (Assessment assessment : courseAssessments) {
+            StudentCourseDetailDTO.StudentAssessmentDTO aDto = new StudentCourseDetailDTO.StudentAssessmentDTO();
+            aDto.setAssessmentName(assessment.getName());
+            aDto.setType(assessment.getType());
+            aDto.setMaxScore(assessment.getMaxScore().doubleValue());
+            aDto.setWeight(assessment.getWeight().doubleValue());
+
+            Optional<Score> scoreOpt = scoreRepository.findByEnrollment_IdAndAssessment_IdAndIsDeletedFalse(
+                    enrollment.getId().intValue(),
+                    assessment.getId());
+
+            if (scoreOpt.isPresent()) {
+                aDto.setScored(scoreOpt.get().getScoreValue().doubleValue());
+                aDto.setStatus("GRADED");
+                totalScore += aDto.getScored();
+            } else {
+                aDto.setScored(null);
+                aDto.setStatus("PENDING");
+            }
+
+            dto.getAssessments().add(aDto);
+        }
+
+        dto.setTotalGrade(totalScore);
+
+        if (totalScore > 0) {
+            GradingScale grade = gradingService.calculateGrade(totalScore);
+            if (grade != null) {
+                dto.setLetterGrade(grade.getLetterGrade());
+                dto.setGradePoint(grade.getGradePoint());
+            }
+        }
+
+        List<Attendance> attendanceList = attendanceRepository.findByStudentAndCourse(
+                student.getId(),
+                offering.getId());
+
+        for (Attendance att : attendanceList) {
+            StudentCourseDetailDTO.StudentAttendanceDTO attDto = new StudentCourseDetailDTO.StudentAttendanceDTO();
+
+            if (att.getClassSession() != null && att.getClassSession().getSessionDate() != null) {
+                attDto.setDate(att.getClassSession().getSessionDate().toString());
+            } else {
+                attDto.setDate("Unknown Date");
+            }
+            attDto.setStatus(att.getStatus());
+            attDto.setRemarks(att.getRemarks());
+            dto.getAttendance().add(attDto);
+        }
+
+        return dto;
+    }
+
+    private Student getStudentFromAuth(Authentication authentication) {
+        String email = authentication.getName();
+        User user = userRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+
+        return studentRepository.findByUser_Id(user.getId())
+                .orElseThrow(() -> new EntityNotFoundException("Student profile not found for user: " + email));
+    }
+
+    @Transactional(readOnly = true)
+    public StudentDashboardStatsDTO getDashboardStats(Authentication authentication) {
+        Student student = getStudentFromAuth(authentication);
+        
+        List<Enrollment> allEnrollments = enrollmentRepository.findByStudent_Id(student.getId().longValue());
+        
+        double totalPoints = 0.0;
+        int totalCredits = 0;
+        
+        double semesterPoints = 0.0;
+        int semesterCredits = 0;
+        
+        for (Enrollment e : allEnrollments) {
+            
+            Double courseScore = null;
+
+            if (e.getFinalGrade() != null) {
+                try {
+                    courseScore = Double.parseDouble(e.getFinalGrade());
+                } catch (NumberFormatException ex) {
+                    
+                }
+            } 
+            
+            else {
+               
+                List<Assessment> assessments = assessmentRepository.findByCourse_IdAndIsDeletedFalse(
+                    e.getCourseOffering().getCourse().getId().intValue()
+                );
+                
+                double calculatedTotal = 0.0;
+                boolean hasScores = false;
+
+                for (Assessment a : assessments) {
+                    Optional<Score> scoreOpt = scoreRepository.findByEnrollment_IdAndAssessment_IdAndIsDeletedFalse(
+                        e.getId().intValue(), a.getId()
+                    );
+                    if (scoreOpt.isPresent()) {
+                        calculatedTotal += scoreOpt.get().getScoreValue().doubleValue();
+                        hasScores = true;
+                    }
+                }
+                
+                if (hasScores) {
+                    courseScore = calculatedTotal;
+                }
+            }
+
+            if (courseScore != null) {
+                GradingScale grade = gradingService.calculateGrade(courseScore);
+                
+                if (grade != null) {
+                    Double credits = e.getCourseOffering().getCourse().getCredits();
+                    double points = grade.getGradePoint() * credits;
+                    
+                    
+                    totalPoints += points;
+                    totalCredits += credits;
+                    
+                    if ("ENROLLED".equals(e.getStatus())) {
+                        semesterPoints += points;
+                        semesterCredits += credits;
+                    }
+                }
+            }
+        }
+        
+        StudentDashboardStatsDTO stats = new StudentDashboardStatsDTO();
+        
+        if (totalCredits > 0) {
+            stats.setCumulativeGPA(totalPoints / totalCredits);
+            stats.setTotalCreditsEarned(totalCredits);
+        } else {
+            stats.setCumulativeGPA(0.0);
+            stats.setTotalCreditsEarned(0);
+        }
+    
+        if (semesterCredits > 0) {
+            stats.setSemesterGPA(semesterPoints / semesterCredits);
+            stats.setCurrentSemesterCredits(semesterCredits);
+        } else {
+            stats.setSemesterGPA(0.0);
+            stats.setCurrentSemesterCredits(0);
+        }
+        
+        return stats;
+    }
+
     @Transactional(readOnly = true)
     public StudentResponse getStudentById(Integer id) {
         Student student = studentRepository.findById(id)
@@ -229,6 +394,37 @@ public class StudentService {
         student.setDeleted(true);
         studentRepository.save(student);
         auditLogService.log("DELETE_STUDENT", "Student", student.getId().longValue(), student.toString(), null);
+    }
+
+    private StudentCourseDTO mapToStudentCourseDTO(Enrollment e) {
+        StudentCourseDTO dto = new StudentCourseDTO();
+        dto.setEnrollmentId(e.getId().longValue());
+
+        CourseOffering offering = e.getCourseOffering();
+        dto.setCourseOfferingId(offering.getId());
+        dto.setCourseCode(offering.getCourse().getCourseCode());
+        dto.setCourseTitle(offering.getCourse().getTitle());
+        dto.setSectionName(offering.getSection().getName());
+        dto.setContactHours(offering.getContactHours());
+        dto.setSemesterName(offering.getAcademicSemester().getName());
+        dto.setStatus(e.getStatus());
+
+        if (offering.getInstructor() != null && offering.getInstructor().getUser() != null) {
+            User instUser = offering.getInstructor().getUser();
+            dto.setInstructorName(instUser.getFirstName() + " " + instUser.getLastName());
+        } else {
+            dto.setInstructorName("TBD");
+        }
+
+        if (e.getFinalGrade() != null) {
+            try {
+                dto.setCurrentGrade(Double.parseDouble(e.getFinalGrade()));
+            } catch (NumberFormatException ex) {
+                dto.setLetterGrade(e.getFinalGrade());
+            }
+        }
+
+        return dto;
     }
 
     private StudentResponse mapToResponse(Student s) {

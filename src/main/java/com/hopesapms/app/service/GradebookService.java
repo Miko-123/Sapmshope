@@ -1,21 +1,18 @@
 package com.hopesapms.app.service;
 
-import com.hopesapms.app.dto.AssessmentSummaryDTO;
-import com.hopesapms.app.dto.GradebookDTO;
-import com.hopesapms.app.dto.StudentGradeRowDTO;
+import com.hopesapms.app.dto.*;
 import com.hopesapms.app.exception.ResourceNotFoundException;
 import com.hopesapms.app.model.*;
 import com.hopesapms.app.repository.*;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Pageable;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -24,116 +21,105 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class GradebookService {
 
-    private final CourseOfferingRepository courseOfferingRepository; 
+    private final CourseOfferingRepository courseOfferingRepository;
     private final AssessmentRepository assessmentRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final ScoreRepository scoreRepository;
     private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
-    public GradebookDTO getGradebookForCourseOffering(Long courseOfferingId, Authentication authentication) {
+    public GradebookDTO getGradebook(Long offeringId) {
 
-        CourseOffering offering = courseOfferingRepository.findById(courseOfferingId)
-                .orElseThrow(() -> new ResourceNotFoundException("Course Offering not found with id: " + courseOfferingId));
+        CourseOffering offering = courseOfferingRepository.findById(offeringId)
+                .orElseThrow(() -> new ResourceNotFoundException("Offering not found"));
 
-        Course course = offering.getCourse();
+        // Retrieve assessments for the course
+        List<Assessment> assessments = assessmentRepository
+                .findByCourse_IdAndIsDeletedFalse(offering.getCourse().getId().intValue());
 
-        checkUserAuthorityForCourse(authentication, course.getDepartment().getId(), "view gradebook for");
+        // Retrieve enrollments
+        List<Enrollment> enrollments = enrollmentRepository.findByCourseOfferingId(offeringId);
+        List<Integer> enrollmentIds = enrollments.stream().map(Enrollment::getId).collect(Collectors.toList());
 
-        List<Assessment> assessments = assessmentRepository.findByCourse_IdAndIsDeletedFalse(course.getId());
+        // Retrieve existing scores
+        List<Score> scores = scoreRepository.findByEnrollmentIdIn(enrollmentIds);
 
-        List<Enrollment> enrollments = enrollmentRepository.findByCourseOfferingId(courseOfferingId);
+        GradebookDTO dto = new GradebookDTO();
+        dto.setCourseId(offering.getCourse().getId());
+        dto.setCourseName(offering.getCourse().getTitle());
+        dto.setSectionName(offering.getSection().getName());
 
-        List<StudentGradeRowDTO> studentGradeRows = new ArrayList<>();
-        for (Enrollment enrollment : enrollments) {
-            StudentGradeRowDTO row = new StudentGradeRowDTO();
-            row.setEnrollmentId(enrollment.getId());
+        // Map Columns (Assessments)
+        dto.setColumns(assessments.stream().map(a -> {
+            GradebookDTO.AssessmentColumnDTO col = new GradebookDTO.AssessmentColumnDTO();
+            col.setAssessmentId(a.getId());
+            col.setTitle(a.getName());
+            col.setMaxScore(a.getMaxScore().doubleValue());
+            col.setWeight(a.getWeight().doubleValue());
+            return col;
+        }).collect(Collectors.toList()));
 
-            Student student = enrollment.getStudent();
-            User studentUser = student.getUser();
-            
-            row.setStudentUserId(studentUser.getId());
-            row.setStudentName(studentUser.getFirstName() + " " + studentUser.getLastName());
-            row.setStudentId(student.getStudentId());
+        // Map Rows (Students & Scores)
+        List<GradebookDTO.StudentGradeRowDTO> rows = new ArrayList<>();
+        for (Enrollment e : enrollments) {
+            Student s = e.getStudent();
+            GradebookDTO.StudentGradeRowDTO row = new GradebookDTO.StudentGradeRowDTO();
 
-            List<Score> scores = scoreRepository.findByEnrollmentId(enrollment.getId(), Pageable.unpaged())
-                    .getContent();
+            row.setEnrollmentId(e.getId());
+            row.setStudentIdString(s.getStudentId());
+            row.setFullName(s.getUser().getFirstName() + " " + s.getUser().getLastName());
 
-            Map<Integer, BigDecimal> scoreMap = scores.stream()
-                    .collect(Collectors.toMap(s -> s.getAssessment().getId(), Score::getScoreValue));
-
-            BigDecimal totalPercentage = calculateWeightedPercentage(assessments, scoreMap);
-
-            row.setFinalPercentage(totalPercentage.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP));
-            row.setLetterGrade(calculateLetterGrade(totalPercentage));
-
-            studentGradeRows.add(row);
-        }
-
-        GradebookDTO gradebook = new GradebookDTO();
-        gradebook.setCourseOfferingId(offering.getId());
-        gradebook.setCourseName(course.getTitle());
-        gradebook.setSectionName(offering.getSection().getName());
-        gradebook.setSemesterName(offering.getAcademicSemester().getName());
-        
-        gradebook.setAssessmentSummaries(assessments.stream()
-                .map(a -> new AssessmentSummaryDTO(a.getName(), a.getWeight(), a.getMaxScore()))
-                .collect(Collectors.toList()));
-        gradebook.setStudentGrades(studentGradeRows);
-
-        return gradebook;
-    }
-
-    private BigDecimal calculateWeightedPercentage(List<Assessment> assessments, Map<Integer, BigDecimal> scoreMap) {
-        BigDecimal totalPercentage = BigDecimal.ZERO;
-
-        for (Assessment assessment : assessments) {
-            BigDecimal score = scoreMap.get(assessment.getId());
-            if (score != null) {
-                BigDecimal maxScore = assessment.getMaxScore();
-                BigDecimal weight = assessment.getWeight();
-
-                BigDecimal percentage = score.divide(maxScore, 4, RoundingMode.HALF_UP)
-                        .multiply(weight);
-
-                totalPercentage = totalPercentage.add(percentage);
+            Map<Integer, Double> scoreMap = new HashMap<>();
+            for (Score score : scores) {
+                if (score.getEnrollment().getId().equals(e.getId())) {
+                    scoreMap.put(score.getAssessment().getId(), score.getScoreValue().doubleValue());
+                }
             }
+            row.setScores(scoreMap);
+            rows.add(row);
         }
-        return totalPercentage;
+        dto.setRows(rows);
+
+        return dto;
     }
 
-    private String calculateLetterGrade(BigDecimal percentage) {
+    @Transactional
+    public void saveScore(SaveScoreRequestDTO dto, Authentication authentication) {
 
-        double p = percentage.doubleValue();
-        if (p >= 0.90)
-            return "A";
-        if (p >= 0.80)
-            return "B";
-        if (p >= 0.70)
-            return "C";
-        if (p >= 0.60)
-            return "D";
-        return "F";
+        User grader = getUserFromAuth(authentication);
+
+        Enrollment enrollment = enrollmentRepository.findById(dto.getEnrollmentId().intValue())
+                .orElseThrow(() -> new ResourceNotFoundException("Enrollment not found"));
+
+        Assessment assessment = assessmentRepository.findById(dto.getAssessmentId())
+                .orElseThrow(() -> new ResourceNotFoundException("Assessment not found"));
+
+        if (dto.getScore() > assessment.getMaxScore().doubleValue()) {
+            throw new IllegalArgumentException(
+                    "Score " + dto.getScore() + " exceeds max allowed " + assessment.getMaxScore());
+        }
+
+        Score score = scoreRepository.findByEnrollmentIdAndAssessmentId(dto.getEnrollmentId(), dto.getAssessmentId())
+                .orElse(new Score());
+
+        if (score.getId() == null) {
+            score.setEnrollment(enrollment);
+            score.setAssessment(assessment);
+            score.setCreatedAt(LocalDateTime.now());
+        }
+
+        score.setScoreValue(BigDecimal.valueOf(dto.getScore()));
+        score.setRecordedBy(grader);
+        score.setRecordedDate(LocalDateTime.now());
+        score.setUpdatedAt(LocalDateTime.now());
+
+        scoreRepository.save(score);
     }
 
-    private void checkUserAuthorityForCourse(Authentication authentication, Long departmentId, String action) {
-        User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
-                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
+    private User getUserFromAuth(Authentication authentication) {
+        String email = authentication.getName();
 
-        boolean isSystemAdmin = user.getRoles().stream()
-                .anyMatch(role -> "SYSTEM_ADMIN".equals(role.getName()));
-        if (isSystemAdmin)
-            return;
-
-        boolean isInstructor = user.getRoles().stream()
-                .anyMatch(role -> "INSTRUCTOR".equals(role.getName()));
-        boolean isDeptHead = user.getRoles().stream()
-                .anyMatch(role -> "DEPARTMENT_HEAD".equals(role.getName()));
-
-        if ((isInstructor || isDeptHead) && user.getDepartment() != null
-                && user.getDepartment().getId().equals(departmentId)) {
-            return;
-        }
-        throw new AccessDeniedException("You do not have permission to " + action + " this course.");
+        return userRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found with email: " + email));
     }
 }

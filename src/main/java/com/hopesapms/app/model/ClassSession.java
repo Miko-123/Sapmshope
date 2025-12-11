@@ -17,36 +17,38 @@ import java.time.LocalTime;
 @AllArgsConstructor
 @Builder
 public class ClassSession {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "course_id", nullable = false)
-    private Course course;
+    @JoinColumn(name = "course_offering_id", nullable = false)
+    private CourseOffering courseOffering;
 
     @Column(name = "session_date", nullable = false)
     private LocalDate sessionDate;
 
-    @Column(name = "session_time", nullable = false)
-    private LocalTime sessionTime;
+    @Column(name = "instructor_status")
+    private String instructorStatus;
 
-    @Column(length = 255)
-    private String location;
+    @Column(name = "start_time")
+    private LocalTime startTime;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "scheduled_instructor_id", nullable = false)
-    private User scheduledInstructor;
+    @Column(name = "end_time")
+    private LocalTime endTime;
+
+    @Column(length = 50, nullable = false)
+    @Builder.Default
+    private String status = "COMPLETED";
 
     @Column(name = "is_deleted", nullable = false)
     @Builder.Default
     private boolean isDeleted = false;
 
     @CreationTimestamp
-    @Column(name = "created_at")
     private LocalDateTime createdAt;
 
     @UpdateTimestamp
-    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 }

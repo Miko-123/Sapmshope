@@ -171,7 +171,7 @@ public class AssessmentService {
     }
 
     private User checkUserAuthorityForCourse(Authentication authentication, Long departmentId, String action) {
-        User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
+        User user = userRepository.findByEmailAndIsDeletedFalse(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
 
         if (isDeptHeadOrAdmin(user)) {

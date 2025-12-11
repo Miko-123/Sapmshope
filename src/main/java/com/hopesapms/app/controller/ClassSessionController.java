@@ -1,4 +1,4 @@
-package com.hopesapms.app.controller;
+/*package com.hopesapms.app.controller;
 
 import com.hopesapms.app.dto.ClassSessionRequestDTO;
 import com.hopesapms.app.dto.ClassSessionResponseDTO;
@@ -47,4 +47,4 @@ public class ClassSessionController {
         classSessionService.deleteClassSession(id, authentication);
         return ResponseEntity.noContent().build();
     }
-}
+}*/

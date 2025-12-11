@@ -1,4 +1,4 @@
-package com.hopesapms.app.service;
+/* package com.hopesapms.app.service;
 
 import com.hopesapms.app.model.StudentAttendance;
 import com.hopesapms.app.repository.StudentAttendanceRepository;
@@ -31,3 +31,4 @@ public class StudentAttendaceService {
         return studentAttendaceRepository.findByClassSessionId(classSessionId, pageable);
     }
 }
+*/

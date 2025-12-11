@@ -67,4 +67,6 @@ public interface StudentRepository extends JpaRepository<Student, Integer> {
             "LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%'))) AND " +
             "s.isDeleted = false")
     Page<Student> searchStudents(String query, Pageable pageable);
+
+    Optional<Student> findByUser_Id(Integer id);
 }

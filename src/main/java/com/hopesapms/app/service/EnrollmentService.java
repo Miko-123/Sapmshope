@@ -43,7 +43,6 @@ public class EnrollmentService {
             return "No students found in " + section.getName();
         }
 
-        // FIX: Explicitly look for BOTH 'ACTIVE' and 'PLANNED'
         List<String> targetStatuses = List.of("ACTIVE", "PLANNED");
         
         List<CourseOffering> offerings = courseOfferingRepository
@@ -64,7 +63,7 @@ public class EnrollmentService {
             boolean studentEnrolledInSomething = false;
 
             for (CourseOffering offering : offerings) {
-                // Check duplicate
+
                 boolean exists = enrollmentRepository.existsByStudentAndCourseOffering(student, offering);
                 
                 if (!exists) {
@@ -82,7 +81,6 @@ public class EnrollmentService {
                 }
             }
 
-            // Auto-activate logic
             if (studentEnrolledInSomething && "PENDING".equals(student.getStatus())) {
                 student.setStatus("ACTIVE");
                 studentRepository.save(student);
@@ -98,19 +96,28 @@ public class EnrollmentService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW) 
-    public void enrollSectionInNewOffering(Long offeringId) {
+    public void enrollSectionInNewOffering(Long courseOfferingId) {
         
-        CourseOffering offering = courseOfferingRepository.findById(offeringId)
-                .orElseThrow(() -> new ResourceNotFoundException("Course Offering not found"));
+        CourseOffering offering = courseOfferingRepository.findById(courseOfferingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Course Offering not found: " + courseOfferingId));
 
-        if (offering.getSection() == null) return;
+        if (offering.getSection() == null) {
+            System.out.println("Skipping auto-enroll: Offering " + courseOfferingId + " has no section.");
+            return;
+        }
 
         List<Student> students = studentRepository.findBySectionIdAndIsDeletedFalse(offering.getSection().getId());
         
-        System.out.println("DEBUG: Found " + students.size() + " students for offering " + offeringId); // Debug Log
+        if (students.isEmpty()) {
+             System.out.println("Skipping auto-enroll: No students found in section " + offering.getSection().getName());
+             return;
+        }
+
+        System.out.println("Auto-Sync: Found " + students.size() + " students for " + offering.getCourse().getTitle());
 
         int count = 0;
         for (Student student : students) {
+    
             if (!enrollmentRepository.existsByStudentAndCourseOffering(student, offering)) {
                 Enrollment enrollment = Enrollment.builder()
                         .student(student)
@@ -119,6 +126,7 @@ public class EnrollmentService {
                         .enrollmentDate(LocalDate.now())
                         .isAddStudent(false)
                         .build();
+                
                 enrollmentRepository.save(enrollment);
                 
                 if ("PENDING".equals(student.getStatus())) {
@@ -128,7 +136,7 @@ public class EnrollmentService {
                 count++;
             }
         }
-        System.out.println("Auto-synced " + count + " students into new offering: " + offering.getCourse().getTitle());
+        System.out.println("Auto-Sync Complete: Enrolled " + count + " students.");
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

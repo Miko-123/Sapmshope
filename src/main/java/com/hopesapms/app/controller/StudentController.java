@@ -14,14 +14,15 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
-
 
 @RestController
 @RequestMapping("/api/students")
@@ -48,6 +49,30 @@ public class StudentController {
         return ResponseEntity.created(location).body(response);
     }
 
+    @GetMapping("/courses")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    @Operation(summary = "Get my active enrolled courses")
+    public ResponseEntity<List<StudentCourseDTO>> getMyCourses(Authentication authentication) {
+        return ResponseEntity.ok(studentService.getMyActiveCourses(authentication));
+    }
+
+    @GetMapping("/courses/{enrollmentId}")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    @Operation(summary = "Get detailed grades and attendance for a course")
+    public ResponseEntity<StudentCourseDetailDTO> getCourseDetails(
+            @PathVariable Long enrollmentId,
+            Authentication authentication) {
+
+        return ResponseEntity.ok(studentService.getCourseDetails(enrollmentId, authentication));
+    }
+
+    @GetMapping("/stats")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    @Operation(summary = "Get student GPA and credit stats")
+    public ResponseEntity<StudentDashboardStatsDTO> getDashboardStats(Authentication authentication) {
+        return ResponseEntity.ok(studentService.getDashboardStats(authentication));
+    }
+
     @PostMapping(value = "/register/bulk", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAuthority('REGISTRAR')")
     @Operation(summary = "Bulk register students", description = "Upload an Excel file to register multiple students at once.")
@@ -72,7 +97,7 @@ public class StudentController {
             @RequestParam String query,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        
+
         Pageable pageable = PageRequest.of(page, size);
         Page<StudentResponse> students = studentService.searchStudents(query, pageable);
         return ResponseEntity.ok(students);
@@ -112,4 +137,5 @@ public class StudentController {
             @RequestParam String otp) {
         return ResponseEntity.ok(studentService.verifyStudent(email, otp));
     }
+
 }

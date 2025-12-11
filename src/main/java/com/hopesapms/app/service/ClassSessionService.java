@@ -1,4 +1,4 @@
-package com.hopesapms.app.service;
+/* package com.hopesapms.app.service;
 
 import com.hopesapms.app.dto.ClassSessionRequestDTO;
 import com.hopesapms.app.dto.ClassSessionResponseDTO;
@@ -99,4 +99,4 @@ public class ClassSessionService {
         dto.setScheduledInstructorName(session.getScheduledInstructor().getFirstName() + " " + session.getScheduledInstructor().getLastName());
         return dto;
     }
-}
+}*/

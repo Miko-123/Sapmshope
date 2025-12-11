@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional; 
 
 @Repository
@@ -31,4 +32,9 @@ public interface ScoreRepository extends JpaRepository<Score, Integer> {
 
     @Query("SELECT AVG(s.scoreValue) FROM Score s JOIN s.enrollment e WHERE e.student.id = :studentId AND s.isDeleted = false")
     Double findAverageScoreByStudentId(Integer studentId);
+
+    Optional<Score> findByEnrollmentIdAndAssessmentId(Long enrollmentId, Integer assessmentId);
+
+    @Query("SELECT s FROM Score s WHERE s.enrollment.id IN :enrollmentIds")
+    List<Score> findByEnrollmentIdIn(List<Integer> enrollmentIds);
 }

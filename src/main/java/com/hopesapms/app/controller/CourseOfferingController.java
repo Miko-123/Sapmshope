@@ -6,21 +6,16 @@ import com.hopesapms.app.dto.CourseOfferingResponseDTO;
 import com.hopesapms.app.dto.UpdateScheduleRequestDTO;
 import com.hopesapms.app.model.Room;
 import com.hopesapms.app.service.CourseOfferingService;
-import com.hopesapms.app.service.CourseOfferingImportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType; 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile; 
-
-import java.util.List;
-import java.util.Map; 
+import java.util.List; 
 
 @RestController
 @RequestMapping("/api/course-offerings")
@@ -29,7 +24,6 @@ import java.util.Map;
 public class CourseOfferingController {
 
     private final CourseOfferingService courseOfferingService;
-    private final CourseOfferingImportService courseOfferingImportService; 
 
     @PostMapping
     @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'PROGRAM_OFFICER')")
