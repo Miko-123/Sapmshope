@@ -12,8 +12,10 @@ import java.time.LocalDateTime;
 @Data
 public class AssessmentRequestDTO {
 
-    @NotNull(message = "Course ID is required")
-    private Integer courseId;
+    @NotNull(message = "Course Offering ID is required")
+    private Long courseOfferingId;
+
+    private Integer courseId; 
 
     @NotBlank(message = "Assessment name is required")
     private String name; 
@@ -32,7 +34,6 @@ public class AssessmentRequestDTO {
 
     private LocalDateTime dueDate;
     private String description;
-    
     
     private Boolean isBase; 
 }

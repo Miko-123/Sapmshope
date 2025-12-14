@@ -19,16 +19,16 @@ public class GradingScale {
     private Integer id;
 
     @Column(nullable = false, length = 5)
-    private String letterGrade; // A, A-, B+, etc.
+    private String letterGrade; 
 
     @Column(nullable = false)
-    private Double minScore;    // e.g., 90.0
+    private Double minScore;    
 
     @Column(nullable = false)
-    private Double maxScore;    // e.g., 100.0
+    private Double maxScore;    
 
     @Column(nullable = false)
-    private Double gradePoint;  // e.g., 4.0, 3.75
+    private Double gradePoint;  
 
-    private String description; // Excellent, Very Good, etc.
+    private String description;
 }

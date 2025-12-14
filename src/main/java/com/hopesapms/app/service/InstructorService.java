@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -22,14 +23,16 @@ public class InstructorService {
     private final CourseOfferingRepository courseOfferingRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final UserRepository userRepository;
+    private final GradingService gradingService;
+    private final AssessmentRepository assessmentRepository;
+    private final ScoreRepository scoreRepository;
 
     @Transactional(readOnly = true)
     public List<CourseOfferingResponseDTO> getMyCourses(String email) {
         Instructor instructor = getInstructorByEmail(email);
-        
-       
-        List<CourseOffering> offerings = courseOfferingRepository.findByInstructorIdAndStatus(instructor.getId(), "ACTIVE");
-        
+
+        List<CourseOffering> offerings = courseOfferingRepository.findByInstructorIdAndStatus(instructor.getId(),
+                "ACTIVE");
         offerings.addAll(courseOfferingRepository.findByInstructorIdAndStatus(instructor.getId(), "PLANNED"));
 
         return offerings.stream()
@@ -40,7 +43,7 @@ public class InstructorService {
     @Transactional(readOnly = true)
     public List<StudentResponse> getClassList(Long offeringId, String email) {
         Instructor instructor = getInstructorByEmail(email);
-        
+
         CourseOffering offering = courseOfferingRepository.findById(offeringId)
                 .orElseThrow(() -> new ResourceNotFoundException("Course offering not found"));
 
@@ -58,37 +61,64 @@ public class InstructorService {
     private Instructor getInstructorByEmail(String email) {
         User user = userRepository.findByEmailAndIsDeletedFalse(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        
+
         return instructorRepository.findByUser_Id(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Instructor profile not found for user: " + email));
     }
-    
+
     @Transactional(readOnly = true)
     public Map<String, Object> getInstructorDashboardStats(String email) {
         Instructor instructor = getInstructorByEmail(email);
-        List<CourseOffering> activeCourses = courseOfferingRepository.findByInstructorIdAndStatus(instructor.getId(), "ACTIVE");
-        
+        List<CourseOffering> activeCourses = courseOfferingRepository.findByInstructorIdAndStatus(instructor.getId(),
+                "ACTIVE");
+
         int totalCourses = activeCourses.size();
-        
+
         long totalStudents = 0;
         for (CourseOffering offering : activeCourses) {
             totalStudents += enrollmentRepository.countByCourseOffering(offering);
         }
-        
+
         long pendingGrades = activeCourses.stream()
-            .mapToLong(c -> enrollmentRepository.countByCourseOfferingIdAndFinalGradeIsNull(c.getId()))
-            .sum();
-            
+                .mapToLong(c -> enrollmentRepository.countByCourseOfferingIdAndFinalGradeIsNull(c.getId()))
+                .sum();
+
         int totalHours = activeCourses.stream().mapToInt(CourseOffering::getContactHours).sum();
 
         return Map.of(
-            "totalCourses", totalCourses,
-            "totalStudents", totalStudents,
-            "pendingGrades", pendingGrades,
-            "totalContactHours", totalHours
-        );
+                "totalCourses", totalCourses,
+                "totalStudents", totalStudents,
+                "pendingGrades", pendingGrades,
+                "totalContactHours", totalHours);
     }
 
+    @Transactional
+    public void submitFinalGrades(Long courseOfferingId, String instructorEmail) {
+
+        List<Enrollment> enrollments = enrollmentRepository.findByCourseOfferingId(courseOfferingId);
+        List<Assessment> assessments = assessmentRepository.findByCourseOfferingIdAndIsDeletedFalse(courseOfferingId);
+
+        for (Enrollment e : enrollments) {
+            double totalScore = 0.0;
+            boolean hasScores = false;
+
+            for (Assessment a : assessments) {
+                Optional<Score> scoreOpt = scoreRepository.findByEnrollment_IdAndAssessment_IdAndIsDeletedFalse(
+                        e.getId().intValue(), a.getId());
+                if (scoreOpt.isPresent()) {
+                    totalScore += scoreOpt.get().getScoreValue().doubleValue();
+                    hasScores = true;
+                }
+            }
+
+            GradingScale gradeScale = gradingService.calculateGrade(totalScore);
+
+            if (gradeScale != null) {
+                e.setFinalGrade(gradeScale.getLetterGrade());
+                enrollmentRepository.save(e);
+            }
+        }
+    }
 
     private CourseOfferingResponseDTO mapToOfferingDTO(CourseOffering c) {
         CourseOfferingResponseDTO dto = new CourseOfferingResponseDTO();
@@ -99,7 +129,8 @@ public class InstructorService {
         dto.setSectionName(c.getSection().getName());
         dto.setSemesterName(c.getAcademicSemester().getName());
         dto.setStatus(c.getStatus());
-        dto.setSectionYearLevel(c.getSection().getYearLevel());;
+        dto.setSectionYearLevel(c.getSection().getYearLevel());
+        ;
         dto.setContactHours(c.getContactHours());
         return dto;
     }

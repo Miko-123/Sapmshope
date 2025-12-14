@@ -11,7 +11,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
@@ -22,7 +21,6 @@ import com.hopesapms.app.exception.ResourceNotFoundException;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -33,7 +31,6 @@ public class StudentService {
     private final RoleRepository roleRepository;
     private final DepartmentRepository departmentRepository;
     private final ProgramRepository programRepository;
-    private final PasswordEncoder passwordEncoder;
     private final JavaMailSender mailSender;
     private final AuditLogService auditLogService;
     private final SectionRepository sectionRepository;
@@ -42,13 +39,11 @@ public class StudentService {
     private final ScoreRepository scoreRepository;
     private final AttendanceRepository attendanceRepository;
     private final GradingService gradingService;
+    private final CourseScheduleRepository courseScheduleRepository;
 
     private final ApplicationEventPublisher eventPublisher;
 
     private final Map<String, String> otpCache = new HashMap<>();
-
-    private static final Pattern PASSWORD_PATTERN = Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]{8,}$");
-    private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+?[1-9]\\d{1,14}$");
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = { IllegalArgumentException.class,
             EntityExistsException.class })
@@ -63,8 +58,7 @@ public class StudentService {
                 .orElseThrow(() -> new IllegalArgumentException("STUDENT role not found"));
 
         User user = User.builder()
-                .username((request.getFirstName() + "" + request.getMiddleName())) // Consider adding random numbers for
-                                                                                   // uniqueness
+                .username((request.getFirstName() + "" + request.getMiddleName()))
                 .email(request.getEmail())
                 .firstName(request.getFirstName())
                 .middleName(request.getMiddleName())
@@ -106,9 +100,10 @@ public class StudentService {
                 .orElseThrow(() -> new EntityNotFoundException("Student not found"));
         User user = student.getUser();
 
-        // Update User fields
         if (request.getFirstName() != null)
             user.setFirstName(request.getFirstName());
+        if (request.getMiddleName() != null )
+            user.setMiddleName(request.getMiddleName());
         if (request.getLastName() != null)
             user.setLastName(request.getLastName());
         if (request.getEmail() != null && !user.getEmail().equals(request.getEmail())) {
@@ -139,11 +134,7 @@ public class StudentService {
 
     @Transactional(readOnly = true)
     public Page<StudentResponse> searchStudents(String query, Pageable pageable) {
-        // We will create this repository method next
         Page<Student> students = studentRepository.searchStudents(query, pageable);
-
-        // I am assuming you have a mapping function like this.
-        // If it's named differently, please adjust.
         return students.map(this::mapToResponse);
     }
 
@@ -166,6 +157,123 @@ public class StudentService {
         return "Verification code sent successfully";
     }
 
+    @Transactional(readOnly = true)
+    public AcademicHistoryDTO getAcademicHistory(Authentication authentication) {
+        Student student = getStudentFromAuth(authentication);
+
+        List<Enrollment> allEnrollments = enrollmentRepository.findByStudent_Id(student.getId().longValue());
+
+        Map<AcademicSemester, List<Enrollment>> enrollmentsBySemester = allEnrollments.stream()
+                .filter(e -> e.getCourseOffering().getAcademicSemester() != null)
+                .collect(Collectors.groupingBy(e -> e.getCourseOffering().getAcademicSemester()));
+
+        List<AcademicHistoryDTO.SemesterRecordDTO> semesterRecords = new ArrayList<>();
+        double totalQualityPoints = 0.0;
+        int globalCreditsAttempted = 0;
+        int globalCreditsEarned = 0;
+
+        for (Map.Entry<AcademicSemester, List<Enrollment>> entry : enrollmentsBySemester.entrySet()) {
+            AcademicSemester semester = entry.getKey();
+            List<Enrollment> semesterEnrollments = entry.getValue();
+
+            double semQualityPoints = 0.0;
+            int semCreditsAttempted = 0;
+            int semCreditsEarned = 0;
+
+            List<StudentCourseDTO> courseDTOs = new ArrayList<>();
+
+            for (Enrollment e : semesterEnrollments) {
+                courseDTOs.add(mapToStudentCourseDTO(e));
+
+                if (e.getFinalGrade() != null) {
+                    double credits = e.getCourseOffering().getCourse().getCredits();
+                    Double gradePoints = null;
+
+                    try {
+                        double score = Double.parseDouble(e.getFinalGrade());
+                        GradingScale gs = gradingService.calculateGrade(score);
+                        if (gs != null)
+                            gradePoints = gs.getGradePoint();
+                    } catch (NumberFormatException ex) {
+                        gradePoints = gradingService.getPointsForLetter(e.getFinalGrade());
+                    }
+
+                    if (gradePoints != null) {
+                        semCreditsAttempted += credits;
+                        semQualityPoints += (gradePoints * credits);
+
+                        if (gradePoints > 0) {
+                            semCreditsEarned += credits;
+                        }
+                    }
+                }
+            }
+
+            double semesterGPA = (semCreditsAttempted > 0) ? (semQualityPoints / semCreditsAttempted) : 0.0;
+
+            totalQualityPoints += semQualityPoints;
+            globalCreditsAttempted += semCreditsAttempted;
+            globalCreditsEarned += semCreditsEarned;
+
+            semesterRecords.add(AcademicHistoryDTO.SemesterRecordDTO.builder()
+                    .semesterId(semester.getId())
+                    .semesterName(semester.getName())
+                    .year(semester.getYear())
+                    .status(semester.getStatus())
+                    .semesterGPA(semesterGPA)
+                    .semesterCredits(semCreditsEarned)
+                    .courses(courseDTOs)
+                    .build());
+        }
+
+        semesterRecords.sort((a, b) -> {
+            if ("ACTIVE".equals(a.getStatus()))
+                return -1;
+            if ("ACTIVE".equals(b.getStatus()))
+                return 1;
+            return Long.compare(b.getSemesterId(), a.getSemesterId());
+        });
+
+        double cgpa = (globalCreditsAttempted > 0) ? (totalQualityPoints / globalCreditsAttempted) : 0.0;
+
+        return AcademicHistoryDTO.builder()
+                .studentName(student.getUser().getFirstName() + " " + student.getUser().getLastName())
+                .studentId(student.getStudentId())
+                .cumulativeGPA(cgpa)
+                .totalCreditsEarned(globalCreditsEarned)
+                .semesters(semesterRecords)
+                .build();
+    }
+
+    @Transactional
+    public int promoteStudents(BatchPromoteRequest request) {
+
+        List<Student> students = studentRepository.findByProgram_IdAndYearLevelAndIsDeletedFalse(
+                request.getProgramId(),
+                request.getCurrentYearLevel());
+
+        if (students.isEmpty()) {
+            return 0;
+        }
+
+        for (Student student : students) {
+            if (request.isGraduating()) {
+                student.setStatus("GRADUATED");
+
+            } else {
+                student.setYearLevel(request.getNextYearLevel());
+            }
+        }
+
+        studentRepository.saveAll(students);
+
+        auditLogService.log("BATCH_PROMOTE", "Student", 0L,
+                "Program: " + request.getProgramId(),
+                "Promoted " + students.size() + " students from Year " + request.getCurrentYearLevel());
+
+        return students.size();
+    }
+
     @Transactional
     public UserResponseDTO verifyStudent(String email, String otp) {
         String cachedOtp = otpCache.get(email);
@@ -186,6 +294,10 @@ public class StudentService {
         List<Enrollment> enrollments = enrollmentRepository.findByStudent_IdAndStatus(student.getId().longValue(),
                 "ENROLLED");
         return enrollments.stream()
+                .filter(e -> {
+                    AcademicSemester sem = e.getCourseOffering().getAcademicSemester();
+                    return sem != null && Boolean.TRUE.equals(sem.isCurrent());
+                })
                 .map(this::mapToStudentCourseDTO)
                 .collect(Collectors.toList());
     }
@@ -216,11 +328,10 @@ public class StudentService {
             dto.setInstructorName("TBD");
         }
 
-        List<Assessment> courseAssessments = assessmentRepository.findByCourse_IdAndIsDeletedFalse(
-                offering.getCourse().getId().intValue());
+        List<Assessment> courseAssessments = assessmentRepository.findByCourseOfferingIdAndIsDeletedFalse(
+                offering.getId());
 
         double totalScore = 0.0;
-        double totalMaxWeight = 0.0;
 
         for (Assessment assessment : courseAssessments) {
             StudentCourseDetailDTO.StudentAssessmentDTO aDto = new StudentCourseDetailDTO.StudentAssessmentDTO();
@@ -275,7 +386,54 @@ public class StudentService {
         return dto;
     }
 
-    private Student getStudentFromAuth(Authentication authentication) {
+    @Transactional(readOnly = true)
+    public List<StudentScheduleDTO> getWeeklySchedule(Authentication authentication) {
+        Student student = getStudentFromAuth(authentication);
+        List<Enrollment> enrollments = enrollmentRepository.findByStudent_IdAndStatus(student.getId().longValue(),
+                "ENROLLED");
+
+        List<StudentScheduleDTO> scheduleList = new ArrayList<>();
+
+        for (Enrollment e : enrollments) {
+            List<CourseSchedule> courseSchedules = courseScheduleRepository
+                    .findByCourseOffering_Id(e.getCourseOffering().getId());
+
+            for (CourseSchedule cs : courseSchedules) {
+                StudentScheduleDTO dto = new StudentScheduleDTO();
+                dto.setDay(cs.getDay());
+                dto.setCourseCode(e.getCourseOffering().getCourse().getCourseCode());
+                dto.setCourseTitle(e.getCourseOffering().getCourse().getTitle());
+                dto.setRoom(cs.getRoom());
+                dto.setTime(convertPeriodsToTimeDisplay(cs.getPeriods()));
+
+                if (e.getCourseOffering().getInstructor() != null) {
+                    User u = e.getCourseOffering().getInstructor().getUser();
+                    dto.setInstructor(u.getFirstName() + " " + u.getLastName());
+                } else {
+                    dto.setInstructor("Staff");
+                }
+
+                scheduleList.add(dto);
+            }
+        }
+        return scheduleList;
+    }
+
+    private String convertPeriodsToTimeDisplay(String periods) {
+        if (periods == null)
+            return "TBD";
+        if (periods.contains("1") || periods.contains("2"))
+            return "08:30 - 10:20";
+        if (periods.contains("3") || periods.contains("4"))
+            return "10:30 - 12:20";
+        if (periods.contains("5") || periods.contains("6"))
+            return "13:30 - 15:20";
+        if (periods.contains("7") || periods.contains("8"))
+            return "15:30 - 17:20";
+        return periods;
+    }
+
+    public Student getStudentFromAuth(Authentication authentication) {
         String email = authentication.getName();
         User user = userRepository.findByEmailAndIsDeletedFalse(email)
                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
@@ -287,88 +445,100 @@ public class StudentService {
     @Transactional(readOnly = true)
     public StudentDashboardStatsDTO getDashboardStats(Authentication authentication) {
         Student student = getStudentFromAuth(authentication);
-        
+
         List<Enrollment> allEnrollments = enrollmentRepository.findByStudent_Id(student.getId().longValue());
-        
+
         double totalPoints = 0.0;
-        int totalCredits = 0;
-        
+        int totalGradedCredits = 0;
+
         double semesterPoints = 0.0;
-        int semesterCredits = 0;
-        
+        int semesterGradedCredits = 0;
+
+        int totalAttemptedCredits = 0;
+        int semesterAttemptedCredits = 0;
+
         for (Enrollment e : allEnrollments) {
-            
-            Double courseScore = null;
+
+            if (!"ENROLLED".equals(e.getStatus()) && !"COMPLETED".equals(e.getStatus())) {
+                continue;
+            }
+
+            double credits = e.getCourseOffering().getCourse().getCredits();
+
+            totalAttemptedCredits += credits;
+
+            if ("ENROLLED".equals(e.getStatus())) {
+                semesterAttemptedCredits += credits;
+            }
+
+            Double gradePoints = null;
 
             if (e.getFinalGrade() != null) {
                 try {
-                    courseScore = Double.parseDouble(e.getFinalGrade());
+                    double score = Double.parseDouble(e.getFinalGrade());
+                    GradingScale gs = gradingService.calculateGrade(score);
+                    if (gs != null)
+                        gradePoints = gs.getGradePoint();
                 } catch (NumberFormatException ex) {
-                    
+                    gradePoints = gradingService.getPointsForLetter(e.getFinalGrade());
                 }
-            } 
-            
+            }
+
             else {
-               
-                List<Assessment> assessments = assessmentRepository.findByCourse_IdAndIsDeletedFalse(
-                    e.getCourseOffering().getCourse().getId().intValue()
-                );
-                
+
+                List<Assessment> assessments = assessmentRepository.findByCourseOfferingIdAndIsDeletedFalse(
+                        e.getCourseOffering().getId());
+
                 double calculatedTotal = 0.0;
                 boolean hasScores = false;
 
                 for (Assessment a : assessments) {
                     Optional<Score> scoreOpt = scoreRepository.findByEnrollment_IdAndAssessment_IdAndIsDeletedFalse(
-                        e.getId().intValue(), a.getId()
-                    );
+                            e.getId().intValue(), a.getId());
                     if (scoreOpt.isPresent()) {
                         calculatedTotal += scoreOpt.get().getScoreValue().doubleValue();
                         hasScores = true;
                     }
                 }
-                
+
                 if (hasScores) {
-                    courseScore = calculatedTotal;
+                    GradingScale gs = gradingService.calculateGrade(calculatedTotal);
+                    if (gs != null)
+                        gradePoints = gs.getGradePoint();
                 }
             }
 
-            if (courseScore != null) {
-                GradingScale grade = gradingService.calculateGrade(courseScore);
-                
-                if (grade != null) {
-                    Double credits = e.getCourseOffering().getCourse().getCredits();
-                    double points = grade.getGradePoint() * credits;
-                    
-                    
-                    totalPoints += points;
-                    totalCredits += credits;
-                    
-                    if ("ENROLLED".equals(e.getStatus())) {
-                        semesterPoints += points;
-                        semesterCredits += credits;
-                    }
+            if (gradePoints != null) {
+                double points = gradePoints * credits;
+
+                totalPoints += points;
+                totalGradedCredits += credits;
+
+                if ("ENROLLED".equals(e.getStatus()) || "COMPLETED".equals(e.getStatus())) {
+                    semesterPoints += points;
+                    semesterGradedCredits += credits;
                 }
             }
+
         }
-        
+
         StudentDashboardStatsDTO stats = new StudentDashboardStatsDTO();
-        
-        if (totalCredits > 0) {
-            stats.setCumulativeGPA(totalPoints / totalCredits);
-            stats.setTotalCreditsEarned(totalCredits);
+
+        if (totalGradedCredits > 0) {
+            stats.setCumulativeGPA(totalPoints / totalGradedCredits);
         } else {
             stats.setCumulativeGPA(0.0);
-            stats.setTotalCreditsEarned(0);
         }
-    
-        if (semesterCredits > 0) {
-            stats.setSemesterGPA(semesterPoints / semesterCredits);
-            stats.setCurrentSemesterCredits(semesterCredits);
+
+        if (semesterGradedCredits > 0) {
+            stats.setSemesterGPA(semesterPoints / semesterGradedCredits);
         } else {
             stats.setSemesterGPA(0.0);
-            stats.setCurrentSemesterCredits(0);
         }
-        
+
+        stats.setTotalCreditsEarned(totalAttemptedCredits);
+        stats.setCurrentSemesterCredits(semesterAttemptedCredits);
+
         return stats;
     }
 

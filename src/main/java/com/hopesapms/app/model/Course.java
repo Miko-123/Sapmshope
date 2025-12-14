@@ -69,7 +69,4 @@ public class Course {
     @Builder.Default
     private Set<CourseObjective> objectives = new HashSet<>();
 
-    @OneToMany(mappedBy = "course", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
-    @Builder.Default
-    private Set<Assessment> assessments = new HashSet<>();
 }

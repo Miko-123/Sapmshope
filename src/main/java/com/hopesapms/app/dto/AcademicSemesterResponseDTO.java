@@ -13,5 +13,6 @@ public class AcademicSemesterResponseDTO {
     private LocalDate startDate;
     private LocalDate endDate;
     private boolean isCurrent;
+    private String status;
     private LocalDateTime createdAt;
 }

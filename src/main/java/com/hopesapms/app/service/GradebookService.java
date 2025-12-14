@@ -33,23 +33,19 @@ public class GradebookService {
         CourseOffering offering = courseOfferingRepository.findById(offeringId)
                 .orElseThrow(() -> new ResourceNotFoundException("Offering not found"));
 
-        // Retrieve assessments for the course
         List<Assessment> assessments = assessmentRepository
-                .findByCourse_IdAndIsDeletedFalse(offering.getCourse().getId().intValue());
+                .findByCourseOfferingIdAndIsDeletedFalse(offeringId);
 
-        // Retrieve enrollments
         List<Enrollment> enrollments = enrollmentRepository.findByCourseOfferingId(offeringId);
         List<Integer> enrollmentIds = enrollments.stream().map(Enrollment::getId).collect(Collectors.toList());
 
-        // Retrieve existing scores
         List<Score> scores = scoreRepository.findByEnrollmentIdIn(enrollmentIds);
 
         GradebookDTO dto = new GradebookDTO();
         dto.setCourseId(offering.getCourse().getId());
         dto.setCourseName(offering.getCourse().getTitle());
         dto.setSectionName(offering.getSection().getName());
-
-        // Map Columns (Assessments)
+        dto.setSemesterStatus(offering.getAcademicSemester().getStatus());
         dto.setColumns(assessments.stream().map(a -> {
             GradebookDTO.AssessmentColumnDTO col = new GradebookDTO.AssessmentColumnDTO();
             col.setAssessmentId(a.getId());
@@ -59,7 +55,6 @@ public class GradebookService {
             return col;
         }).collect(Collectors.toList()));
 
-        // Map Rows (Students & Scores)
         List<GradebookDTO.StudentGradeRowDTO> rows = new ArrayList<>();
         for (Enrollment e : enrollments) {
             Student s = e.getStudent();
@@ -67,7 +62,7 @@ public class GradebookService {
 
             row.setEnrollmentId(e.getId());
             row.setStudentIdString(s.getStudentId());
-            row.setFullName(s.getUser().getFirstName() + " " + s.getUser().getLastName());
+            row.setFullName(s.getUser().getFirstName() + " " + s.getUser().getMiddleName() + " " + s.getUser().getLastName());
 
             Map<Integer, Double> scoreMap = new HashMap<>();
             for (Score score : scores) {

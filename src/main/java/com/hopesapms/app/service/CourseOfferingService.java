@@ -19,9 +19,11 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -39,6 +41,7 @@ public class CourseOfferingService {
         private final RoomRepository roomRepository;
         @Lazy
         private final EnrollmentService enrollmentService;
+        private final AcademicSemesterService semesterService;
 
         @Transactional
         public CourseOfferingResponseDTO createCourseOffering(CourseOfferingRequestDTO dto,
@@ -153,10 +156,89 @@ public class CourseOfferingService {
         }
 
         @Transactional
+        public List<CourseOfferingResponseDTO> bulkUpdateOfferings(BulkCourseOfferingRequestDTO dto,
+                        Authentication authentication) {
+
+                User loggedInUser = userRepository.findByEmailAndIsDeletedFalse(authentication.getName())
+                                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                Course course = courseRepository.findById(dto.getCourseId())
+                                .orElseThrow(() -> new ResourceNotFoundException("Course not found"));
+                checkUserAuthorityForDepartment(loggedInUser, course.getDepartment().getId());
+
+                semesterService.validateSemesterEditable(dto.getAcademicSemesterId());
+
+                AcademicSemester semester = academicSemesterRepository.findById(dto.getAcademicSemesterId())
+                                .orElseThrow(() -> new ResourceNotFoundException("Semester not found"));
+
+                List<CourseOffering> existingOfferings = courseOfferingRepository
+                                .findByAcademicSemester_IdAndCourse_IdAndIsDeletedFalse(
+                                                semester.getId().longValue(), course.getId());
+
+                Map<Integer, CourseOffering> existingMap = existingOfferings.stream()
+                                .collect(Collectors.toMap(o -> o.getSection().getId(), o -> o));
+
+                List<CourseOffering> finalSavedList = new ArrayList<>();
+                Set<Integer> processedSectionIds = new HashSet<>();
+
+                for (BulkCourseOfferingRequestDTO.SectionInstructorPair pair : dto.getAssignments()) {
+                        processedSectionIds.add(pair.getSectionId());
+
+                        Instructor instructor = instructorRepository.findByUser_Id(pair.getInstructorId().intValue())
+                                        .orElseThrow(() -> new ResourceNotFoundException("Instructor not found"));
+
+                        if (existingMap.containsKey(pair.getSectionId())) {
+
+                                CourseOffering existing = existingMap.get(pair.getSectionId());
+                                boolean changed = !existing.getInstructor().getId().equals(instructor.getId());
+
+                                if (changed) {
+                                        existing.setInstructor(instructor);
+
+                                        existing.setContactHours(dto.getContactHours());
+                                        existing = courseOfferingRepository.save(existing);
+                                }
+                                finalSavedList.add(existing);
+                        } else {
+
+                                Section section = sectionRepository.findById(pair.getSectionId())
+                                                .orElseThrow(() -> new ResourceNotFoundException("Section not found"));
+
+                                CourseOffering newOffering = CourseOffering.builder()
+                                                .course(course)
+                                                .academicSemester(semester)
+                                                .section(section)
+                                                .instructor(instructor)
+                                                .contactHours(dto.getContactHours())
+                                                .status("PLANNED")
+                                                .yearLevels(dto.getYearLevels())
+                                                .build();
+
+                                finalSavedList.add(courseOfferingRepository.save(newOffering));
+                        }
+                }
+
+                for (CourseOffering existing : existingOfferings) {
+                        if (!processedSectionIds.contains(existing.getSection().getId())) {
+
+                                existing.setDeleted(true);
+                                courseOfferingRepository.save(existing);
+                        }
+                }
+
+                auditLogService.log("BULK_UPDATE_OFFERING", "CourseOffering", 0L,
+                                "Previous count: " + existingOfferings.size(),
+                                "New count: " + finalSavedList.size());
+
+                return finalSavedList.stream().map(this::mapToResponseDTO).collect(Collectors.toList());
+        }
+
+        @Transactional
         public CourseOfferingResponseDTO updateCourseSchedule(Long offeringId, UpdateScheduleRequestDTO dto) {
                 CourseOffering offering = courseOfferingRepository.findById(offeringId)
                                 .orElseThrow(() -> new ResourceNotFoundException(
                                                 "Course Offering not found with id:" + offeringId));
+
+                semesterService.validateSemesterEditable(offering.getAcademicSemester().getId());
 
                 int maxHours = offering.getContactHours();
                 int scheduledHours = 0;
@@ -279,6 +361,55 @@ public class CourseOfferingService {
                 }
         }
 
+        @Transactional
+        public CourseOfferingResponseDTO updateCourseOffering(Long id, CourseOfferingRequestDTO dto,
+                        Authentication authentication) {
+
+                CourseOffering offering = courseOfferingRepository.findById(id)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Course Offering not found with id: " + id));
+
+                User loggedInUser = userRepository.findByEmailAndIsDeletedFalse(authentication.getName())
+                                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                checkUserAuthorityForDepartment(loggedInUser, offering.getCourse().getDepartment().getId());
+
+                String oldData = offering.toString();
+
+                if (dto.getInstructorId() != null) {
+                        Instructor newInstructor = instructorRepository.findByUser_Id(dto.getInstructorId().intValue())
+                                        .orElseThrow(() -> new ResourceNotFoundException("Instructor not found"));
+                        offering.setInstructor(newInstructor);
+                } else {
+                        offering.setInstructor(null);
+                }
+
+                if (dto.getSectionId() != null) {
+                        Section newSection = sectionRepository.findById(dto.getSectionId())
+                                        .orElseThrow(() -> new ResourceNotFoundException("Section not found"));
+                        offering.setSection(newSection);
+                }
+
+                if (dto.getStatus() != null)
+                        offering.setStatus(dto.getStatus());
+                if (dto.getContactHours() != null)
+                        offering.setContactHours(dto.getContactHours());
+                if (dto.getYearLevels() != null)
+                        offering.setYearLevels(dto.getYearLevels());
+
+                if (dto.getScheduleSlots() != null) {
+                        offering.getScheduleSlots().clear();
+                        for (ScheduleSlotDTO slotDTO : dto.getScheduleSlots()) {
+                                offering.addScheduleSlot(slotDTO.getDay(), slotDTO.getPeriods(), slotDTO.getRoom());
+                        }
+                }
+
+                CourseOffering saved = courseOfferingRepository.save(offering);
+                auditLogService.log("UPDATE_COURSE_OFFERING", "CourseOffering", saved.getId(), oldData,
+                                saved.toString());
+
+                return mapToResponseDTO(saved);
+        }
+
         @Transactional(readOnly = true)
         public List<Room> getAvailableRooms(Long semesterId, String day, String periods) {
                 List<Room> allRooms = roomRepository.findByIsDeletedFalse();
@@ -309,17 +440,19 @@ public class CourseOfferingService {
         }
 
         private CourseOfferingResponseDTO mapToResponseDTO(CourseOffering offering) {
-
                 CourseOfferingResponseDTO dto = new CourseOfferingResponseDTO();
                 dto.setId(offering.getId());
                 dto.setStatus(offering.getStatus());
                 dto.setCreatedAt(offering.getCreatedAt());
+
                 List<ScheduleSlotDTO> scheduleSlots = offering.getScheduleSlots().stream()
                                 .map(this::mapScheduleSlotToDTO).collect(Collectors.toList());
                 dto.setScheduleSlots(scheduleSlots);
+
                 if (offering.getCourse().getDepartment() != null) {
                         dto.setDepartmentName(offering.getCourse().getDepartment().getName());
                 }
+
                 dto.setCourseId(offering.getCourse().getId());
                 dto.setCourseCode(offering.getCourse().getCourseCode());
                 dto.setCourseTitle(offering.getCourse().getTitle());
@@ -329,11 +462,22 @@ public class CourseOfferingService {
                 dto.setSemesterId(offering.getAcademicSemester().getId());
                 dto.setSemesterName(offering.getAcademicSemester().getName());
                 dto.setSectionYearLevel(offering.getSection().getYearLevel());
-                dto.setInstructorId(offering.getInstructor().getId());
-                dto.setInstructorName(offering.getInstructor().getUser().getFirstName() + " "
-                                + offering.getInstructor().getUser().getMiddleName());
                 dto.setSectionId(offering.getSection().getId());
                 dto.setSectionName(offering.getSection().getName());
+
+                if (offering.getInstructor() != null) {
+                        dto.setInstructorId(offering.getInstructor().getId());
+                        if (offering.getInstructor().getUser() != null) {
+                                dto.setInstructorName(offering.getInstructor().getUser().getFirstName() + " "
+                                                + offering.getInstructor().getUser().getMiddleName());
+                        } else {
+                                dto.setInstructorName("Unknown Instructor");
+                        }
+                } else {
+                        dto.setInstructorId(null);
+                        dto.setInstructorName("TBD");
+                }
+
                 return dto;
         }
 

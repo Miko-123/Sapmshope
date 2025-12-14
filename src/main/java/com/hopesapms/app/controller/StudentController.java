@@ -1,7 +1,12 @@
 package com.hopesapms.app.controller;
 
 import com.hopesapms.app.dto.*;
+import com.hopesapms.app.model.Enrollment;
+import com.hopesapms.app.model.Student;
+import com.hopesapms.app.repository.EnrollmentRepository;
+import com.hopesapms.app.repository.StudentRepository;
 import com.hopesapms.app.service.ExcelImportService;
+import com.hopesapms.app.service.ReportService;
 import com.hopesapms.app.service.StudentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -17,9 +22,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +38,9 @@ public class StudentController {
 
     private final StudentService studentService;
     private final ExcelImportService excelImportService;
+    private final StudentRepository studentRepository;
+    private final EnrollmentRepository enrollmentRepository;
+    private final ReportService reportService;
 
     @PostMapping("/register")
     @PreAuthorize("hasAuthority('REGISTRAR')")
@@ -66,6 +76,19 @@ public class StudentController {
         return ResponseEntity.ok(studentService.getCourseDetails(enrollmentId, authentication));
     }
 
+    @GetMapping("/history")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    @Operation(summary = "Get academic history grouped by semester", description = "Returns all enrolled courses grouped by semester (Active & Archived) with calculated GPA.")
+    public ResponseEntity<AcademicHistoryDTO> getAcademicHistory(Authentication authentication) {
+        return ResponseEntity.ok(studentService.getAcademicHistory(authentication));
+    }
+
+    @GetMapping("/schedule")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    public ResponseEntity<List<StudentScheduleDTO>> getMySchedule(Authentication authentication) {
+        return ResponseEntity.ok(studentService.getWeeklySchedule(authentication));
+    }
+
     @GetMapping("/stats")
     @PreAuthorize("hasAuthority('STUDENT')")
     @Operation(summary = "Get student GPA and credit stats")
@@ -79,6 +102,22 @@ public class StudentController {
     public ResponseEntity<Map<String, Object>> bulkRegisterStudents(
             @Parameter(description = "Excel file", required = true) @RequestPart("file") MultipartFile file) {
         return ResponseEntity.ok(excelImportService.importStudents(file));
+    }
+
+    @GetMapping("/transcript/download")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    public ResponseEntity<byte[]> downloadMyTranscript(Authentication authentication) throws IOException {
+
+        Student student = studentService.getStudentFromAuth(authentication);
+
+        List<Enrollment> enrollments = enrollmentRepository.findByStudent_Id(student.getId().longValue());
+
+        byte[] pdfBytes = reportService.generateStudentTranscript(student, enrollments);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=My_Transcript.pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdfBytes);
     }
 
     @PutMapping("/{id}")
@@ -116,6 +155,14 @@ public class StudentController {
     @PreAuthorize("hasAnyAuthority('REGISTRAR', 'SYSTEM_ADMIN')")
     public ResponseEntity<StudentResponse> getStudent(@PathVariable Integer id) {
         return ResponseEntity.ok(studentService.getStudentById(id));
+    }
+
+    @PostMapping("/promote")
+    @PreAuthorize("hasAuthority('REGISTRAR')")
+    @Operation(summary = "Batch promote students", description = "Promote all students in a specific program and year level to the next level.")
+    public ResponseEntity<String> promoteStudents(@Valid @RequestBody BatchPromoteRequest request) {
+        int count = studentService.promoteStudents(request);
+        return ResponseEntity.ok("Successfully promoted " + count + " students.");
     }
 
     @DeleteMapping("/{id}")

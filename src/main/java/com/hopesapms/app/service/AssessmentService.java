@@ -4,11 +4,11 @@ import com.hopesapms.app.dto.AssessmentRequestDTO;
 import com.hopesapms.app.dto.AssessmentResponseDTO;
 import com.hopesapms.app.exception.ResourceNotFoundException;
 import com.hopesapms.app.model.Assessment;
-import com.hopesapms.app.model.Course;
+import com.hopesapms.app.model.CourseOffering;
 import com.hopesapms.app.model.Enrollment;
 import com.hopesapms.app.model.User;
 import com.hopesapms.app.repository.AssessmentRepository;
-import com.hopesapms.app.repository.CourseRepository;
+import com.hopesapms.app.repository.CourseOfferingRepository;
 import com.hopesapms.app.repository.EnrollmentRepository;
 import com.hopesapms.app.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -29,29 +29,32 @@ import java.util.stream.Stream;
 public class AssessmentService {
 
     private final AssessmentRepository assessmentRepository;
-    private final CourseRepository courseRepository;
+    private final CourseOfferingRepository courseOfferingRepository; // Changed from CourseRepository
     private final EnrollmentRepository enrollmentRepository;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
 
     @Transactional
     public AssessmentResponseDTO createAssessment(AssessmentRequestDTO dto, Authentication authentication) {
-        Course course = courseRepository.findByIdAndIsDeletedFalse(dto.getCourseId())
-                .orElseThrow(() -> new ResourceNotFoundException("Course not found"));
+        // Link to the specific Offering (Semester-bound), not the static Course
+        // NOTE: Ensure your DTO now sends courseOfferingId
+        CourseOffering offering = courseOfferingRepository.findById(dto.getCourseOfferingId()) 
+                .orElseThrow(() -> new ResourceNotFoundException("Course Offering not found"));
 
-        User user = checkUserAuthorityForCourse(authentication, course.getDepartment().getId(), "create assessment for");
+        // Security check: Does user belong to the department of this course?
+        User user = checkUserAuthorityForCourse(authentication, offering.getCourse().getDepartment().getId(), "create assessment for");
 
-        
         boolean isBaseRequest = dto.getIsBase() != null && dto.getIsBase();
         
         if (isBaseRequest && !isDeptHeadOrAdmin(user)) {
             throw new AccessDeniedException("Only Department Heads or Admins can create 'Base' assessments.");
         }
 
-        validateAssessmentWeight(dto.getCourseId(), dto.getWeight(), null);
+        // Validate weights for THIS specific offering
+        validateAssessmentWeight(offering.getId(), dto.getWeight(), null);
 
         Assessment assessment = Assessment.builder()
-                .course(course)
+                .courseOffering(offering) // Linked to Offering
                 .name(dto.getName())
                 .type(dto.getType())
                 .maxScore(dto.getMaxScore())
@@ -73,13 +76,15 @@ public class AssessmentService {
         Assessment assessment = assessmentRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Assessment not found"));
 
-        User user = checkUserAuthorityForCourse(authentication, assessment.getCourse().getDepartment().getId(), "update");
+        // Check auth using the offering's course department
+        User user = checkUserAuthorityForCourse(authentication, assessment.getCourseOffering().getCourse().getDepartment().getId(), "update");
 
         if (assessment.isBase() && !isDeptHeadOrAdmin(user)) {
             throw new AccessDeniedException("You cannot modify a Core Course Assessment defined by the Department.");
         }
 
-        validateAssessmentWeight(assessment.getCourse().getId(), dto.getWeight(), id);
+        // Validate weights excluding self
+        validateAssessmentWeight(assessment.getCourseOffering().getId(), dto.getWeight(), id);
 
         String oldData = assessment.toString();
 
@@ -102,13 +107,13 @@ public class AssessmentService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AssessmentResponseDTO> getAssessmentsForCourse(Integer courseId, Pageable pageable) {
-        
-        if (!courseRepository.existsByIdAndIsDeletedFalse(courseId)) {
-            throw new ResourceNotFoundException("Course not found with id: " + courseId);
+    public Page<AssessmentResponseDTO> getAssessmentsForOffering(Long offeringId, Pageable pageable) {
+        if (!courseOfferingRepository.existsById(offeringId)) {
+            throw new ResourceNotFoundException("Course Offering not found with id: " + offeringId);
         }
         
-        return assessmentRepository.findByCourseId(courseId, pageable)
+        // You'll need to update your Repository to findByCourseOfferingId
+        return assessmentRepository.findByCourseOfferingIdAndIsDeletedFalse(offeringId, pageable)
                 .map(this::mapToResponseDTO);
     }
 
@@ -117,7 +122,7 @@ public class AssessmentService {
         Assessment assessment = assessmentRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Assessment not found"));
 
-        User user = checkUserAuthorityForCourse(authentication, assessment.getCourse().getDepartment().getId(), "delete");
+        User user = checkUserAuthorityForCourse(authentication, assessment.getCourseOffering().getCourse().getDepartment().getId(), "delete");
 
         if (assessment.isBase() && !isDeptHeadOrAdmin(user)) {
             throw new AccessDeniedException("You cannot delete a Core Course Assessment defined by the Department.");
@@ -132,16 +137,19 @@ public class AssessmentService {
 
     @Transactional(readOnly = true)
     public List<AssessmentResponseDTO> getMyAssessments(Authentication authentication) {
-        User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
+        User user = userRepository.findByEmailAndIsDeletedFalse(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
 
+        // Fetch enrollments for the student
         Page<Enrollment> enrollments = enrollmentRepository.findByStudentId(user.getId(), Pageable.unpaged());
 
+        // Stream through enrollments -> Get Offering -> Get Assessments
         Stream<Assessment> allAssessments = enrollments.stream()
                 .filter(e -> "ENROLLED".equals(e.getStatus()) || "IN_PROGRESS".equals(e.getStatus()))
                 .flatMap(enrollment -> {
-                    return assessmentRepository.findByCourse_IdAndIsDeletedFalse(
-                            enrollment.getCourseOffering().getCourse().getId()
+                    // This is now much cleaner: direct link from Offering to Assessments
+                    return assessmentRepository.findByCourseOfferingIdAndIsDeletedFalse(
+                            enrollment.getCourseOffering().getId()
                     ).stream();
                 });
 
@@ -151,9 +159,9 @@ public class AssessmentService {
                 .collect(Collectors.toList());
     }
 
-
-    private void validateAssessmentWeight(Integer courseId, BigDecimal newWeight, Integer assessmentToIgnoreId) {
-        List<Assessment> existingAssessments = assessmentRepository.findByCourse_IdAndIsDeletedFalse(courseId);
+    // Validate based on OFFERING ID, not generic Course ID
+    private void validateAssessmentWeight(Long offeringId, BigDecimal newWeight, Integer assessmentToIgnoreId) {
+        List<Assessment> existingAssessments = assessmentRepository.findByCourseOfferingIdAndIsDeletedFalse(offeringId);
         BigDecimal totalWeight = BigDecimal.ZERO;
 
         for (Assessment existing : existingAssessments) {
@@ -196,7 +204,13 @@ public class AssessmentService {
     private AssessmentResponseDTO mapToResponseDTO(Assessment entity) {
         AssessmentResponseDTO dto = new AssessmentResponseDTO();
         dto.setId(entity.getId());
-        dto.setCourseId(entity.getCourse().getId());
+        
+        // Map from Offering, not generic Course
+        if (entity.getCourseOffering() != null) {
+            dto.setCourseId(entity.getCourseOffering().getCourse().getId()); // Or set OfferingID if needed
+            dto.setCourseOfferingId(entity.getCourseOffering().getId());
+        }
+        
         dto.setName(entity.getName());
         dto.setType(entity.getType());
         dto.setMaxScore(entity.getMaxScore());

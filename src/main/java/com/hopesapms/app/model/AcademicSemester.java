@@ -43,6 +43,17 @@ public class AcademicSemester {
     @Builder.Default
     private boolean isCurrent = false;
 
+    @Column(length = 20)
+    private String status;
+
+    public boolean isArchived() {
+        return "ARCHIVED".equalsIgnoreCase(this.status);
+    }
+
+    public boolean isEditable() {
+        return "ACTIVE".equalsIgnoreCase(this.status) || "PLANNED".equalsIgnoreCase(this.status);
+    }
+
     @CreationTimestamp
     @Column(name = "created_at")
     private LocalDateTime createdAt;

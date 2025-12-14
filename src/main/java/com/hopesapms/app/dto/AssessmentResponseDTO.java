@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 public class AssessmentResponseDTO {
     private Integer id;
     private Integer courseId;
+    private Long courseOfferingId;
     private String name;
     private String type;
     private BigDecimal maxScore;

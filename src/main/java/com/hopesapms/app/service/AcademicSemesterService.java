@@ -32,12 +32,30 @@ public class AcademicSemesterService {
                 .type(dto.getType())
                 .startDate(dto.getStartDate())
                 .endDate(dto.getEndDate())
-                .isCurrent(false) // New semesters are never current by default
+                .isCurrent(false)
+                .status("PLANNED")
                 .build();
 
         AcademicSemester saved = semesterRepository.save(semester);
         auditLogService.log("CREATE_SEMESTER", "AcademicSemester", saved.getId(), null, saved.toString());
         return mapToResponseDTO(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public void validateSemesterEditable(Long semesterId) {
+        AcademicSemester semester = semesterRepository.findById(semesterId)
+                .orElseThrow(() -> new ResourceNotFoundException("Semester not found"));
+
+        if ("ARCHIVED".equalsIgnoreCase(semester.getStatus())) {
+            throw new IllegalStateException(
+                    "Action denied: The semester '" + semester.getName() + "' is ARCHIVED and read-only.");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public AcademicSemester getCurrentSemester() {
+        return semesterRepository.findByIsCurrentTrue()
+                .orElseThrow(() -> new ResourceNotFoundException("No active semester defined."));
     }
 
     @Transactional(readOnly = true)
@@ -59,6 +77,10 @@ public class AcademicSemesterService {
         AcademicSemester semester = semesterRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Academic Semester not found"));
 
+        if ("ARCHIVED".equalsIgnoreCase(semester.getStatus())) {
+            throw new IllegalStateException("Cannot update details of an Archived semester.");
+        }
+
         String oldData = semester.toString();
         semester.setName(dto.getName());
         semester.setYear(dto.getYear());
@@ -76,6 +98,10 @@ public class AcademicSemesterService {
         AcademicSemester semester = semesterRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Academic Semester not found"));
 
+        if (semester.isCurrent()) {
+            throw new IllegalStateException("Cannot delete the currently active semester.");
+        }
+
         String oldData = semester.toString();
         semester.setDeleted(true);
         semesterRepository.save(semester);
@@ -84,24 +110,29 @@ public class AcademicSemesterService {
 
     @Transactional
     public AcademicSemesterResponseDTO setCurrentSemester(Long id) {
-        // 1. Find the new semester to make current
+
         AcademicSemester newCurrent = semesterRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Academic Semester not found"));
 
-        // 2. Find and unset the old current semester (if one exists)
         semesterRepository.findByIsDeletedFalse().stream()
                 .filter(AcademicSemester::isCurrent)
                 .findFirst()
                 .ifPresent(oldCurrent -> {
-                    oldCurrent.setCurrent(false);
-                    semesterRepository.save(oldCurrent);
+
+                    if (!oldCurrent.getId().equals(newCurrent.getId())) {
+                        oldCurrent.setCurrent(false);
+                        oldCurrent.setStatus("ARCHIVED");
+                        semesterRepository.save(oldCurrent);
+                    }
                 });
 
-        // 3. Set the new semester as current
         newCurrent.setCurrent(true);
+        newCurrent.setStatus("ACTIVE");
+
         AcademicSemester saved = semesterRepository.save(newCurrent);
-        
-        auditLogService.log("SET_CURRENT_SEMESTER", "AcademicSemester", saved.getId(), null, saved.toString());
+
+        auditLogService.log("SET_CURRENT_SEMESTER", "AcademicSemester", saved.getId(), null,
+                "Status changed to ACTIVE");
         return mapToResponseDTO(saved);
     }
 
@@ -114,6 +145,7 @@ public class AcademicSemesterService {
         dto.setStartDate(entity.getStartDate());
         dto.setEndDate(entity.getEndDate());
         dto.setCurrent(entity.isCurrent());
+        dto.setStatus(entity.getStatus());
         dto.setCreatedAt(entity.getCreatedAt());
         return dto;
     }

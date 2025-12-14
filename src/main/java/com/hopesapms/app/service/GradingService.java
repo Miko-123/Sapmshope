@@ -57,4 +57,13 @@ public class GradingService {
         return gradingScaleRepository.findByScore(totalScore)
                 .orElse(null);
     }
+
+    @Transactional(readOnly = true)
+    public Double getPointsForLetter(String letterGrade) {
+        return gradingScaleRepository.findAll().stream()
+                .filter(g -> g.getLetterGrade().equalsIgnoreCase(letterGrade))
+                .findFirst()
+                .map(GradingScale::getGradePoint)
+                .orElse(0.0);
+    }
 }

@@ -14,8 +14,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
- 
-import java.util.List; 
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/assessments")
@@ -27,10 +27,10 @@ public class AssessmentController {
 
     @PostMapping
     @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'INSTRUCTOR')")
-    @Operation(summary = "Create a new assessment for a course")
+    @Operation(summary = "Create a new assessment for a course offering")
     public ResponseEntity<AssessmentResponseDTO> createAssessment(
             @Valid @RequestBody AssessmentRequestDTO dto, Authentication authentication) {
-        
+
         AssessmentResponseDTO created = assessmentService.createAssessment(dto, authentication);
         return new ResponseEntity<>(created, HttpStatus.CREATED);
     }
@@ -40,18 +40,18 @@ public class AssessmentController {
     @Operation(summary = "Update an existing assessment")
     public ResponseEntity<AssessmentResponseDTO> updateAssessment(
             @PathVariable Integer id, @Valid @RequestBody AssessmentRequestDTO dto, Authentication authentication) {
-        
+
         AssessmentResponseDTO updated = assessmentService.updateAssessment(id, dto, authentication);
         return ResponseEntity.ok(updated);
     }
 
-    @GetMapping("/by-course/{courseId}")
+    @GetMapping("/by-offering/{offeringId}")
     @PreAuthorize("isAuthenticated()")
-    @Operation(summary = "Get all assessments for a course (Paginated)")
-    public ResponseEntity<Page<AssessmentResponseDTO>> getAssessmentsForCourse(
-            @PathVariable Integer courseId, Pageable pageable) {
-        
-        Page<AssessmentResponseDTO> assessments = assessmentService.getAssessmentsForCourse(courseId, pageable);
+    @Operation(summary = "Get all assessments for a specific course offering (Paginated)")
+    public ResponseEntity<Page<AssessmentResponseDTO>> getAssessmentsForOffering(
+            @PathVariable Long offeringId, Pageable pageable) {
+
+        Page<AssessmentResponseDTO> assessments = assessmentService.getAssessmentsForOffering(offeringId, pageable);
         return ResponseEntity.ok(assessments);
     }
 
@@ -67,7 +67,7 @@ public class AssessmentController {
     @PreAuthorize("hasAuthority('STUDENT')")
     @Operation(summary = "Get all assessments for the logged-in student's active courses (UC-010)")
     public ResponseEntity<List<AssessmentResponseDTO>> getMyAssessments(Authentication authentication) {
-        
+
         List<AssessmentResponseDTO> assessments = assessmentService.getMyAssessments(authentication);
         return ResponseEntity.ok(assessments);
     }

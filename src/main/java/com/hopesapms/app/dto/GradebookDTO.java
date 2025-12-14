@@ -10,6 +10,8 @@ public class GradebookDTO {
     private String courseName;
     private String sectionName;
 
+    private String semesterStatus;
+
     private List<AssessmentColumnDTO> columns;
 
     private List<StudentGradeRowDTO> rows;

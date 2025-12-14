@@ -2,7 +2,10 @@ package com.hopesapms.app.controller;
 
 import com.hopesapms.app.dto.AcademicSemesterRequestDTO;
 import com.hopesapms.app.dto.AcademicSemesterResponseDTO;
+import com.hopesapms.app.dto.SemesterRolloverRequest;
 import com.hopesapms.app.service.AcademicSemesterService;
+import com.hopesapms.app.service.SemesterRolloverService;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -21,9 +24,10 @@ import java.util.List;
 public class AcademicSemesterController {
 
     private final AcademicSemesterService semesterService;
+    private final SemesterRolloverService rolloverService;
 
     @PostMapping
-    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'REGISTRAR')") 
+    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'REGISTRAR')")
     @Operation(summary = "Create a new academic semester")
     public ResponseEntity<AcademicSemesterResponseDTO> createSemester(
             @Valid @RequestBody AcademicSemesterRequestDTO dto) {
@@ -39,7 +43,7 @@ public class AcademicSemesterController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("isAuthenticated()") 
+    @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get a single academic semester by ID")
     public ResponseEntity<AcademicSemesterResponseDTO> getSemesterById(@PathVariable Long id) {
         return ResponseEntity.ok(semesterService.getSemesterById(id));
@@ -53,10 +57,17 @@ public class AcademicSemesterController {
     }
 
     @PutMapping("/{id}/set-current")
-    @Operation(summary = "Set a semester as the single 'current' semester (Admin Only)",
-               description = "This will automatically unset any other semester that is currently active.")
+    @Operation(summary = "Set a semester as the single 'current' semester (Admin Only)", description = "This will automatically unset any other semester that is currently active.")
     public ResponseEntity<AcademicSemesterResponseDTO> setCurrentSemester(@PathVariable Long id) {
         return ResponseEntity.ok(semesterService.setCurrentSemester(id));
+    }
+
+    @PostMapping("/rollover")
+    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'REGISTRAR')")
+    @Operation(summary = "Copy course offerings from one semester to another", description = "Creates new offering rows for the target semester. Does NOT copy students or grades.")
+    public ResponseEntity<String> rolloverSemester(@RequestBody SemesterRolloverRequest request) {
+        int count = rolloverService.rolloverSemester(request);
+        return ResponseEntity.ok("Rollover successful. " + count + " course offerings created for the new semester.");
     }
 
     @DeleteMapping("/{id}")

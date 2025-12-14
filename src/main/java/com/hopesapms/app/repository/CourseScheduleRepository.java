@@ -12,4 +12,6 @@ import java.util.List;
 public interface CourseScheduleRepository extends JpaRepository<CourseSchedule, Long> {
 
     List<CourseSchedule> findByDay(String day);
+
+    List<CourseSchedule> findByCourseOffering_Id(Long courseOfferingId);
 }

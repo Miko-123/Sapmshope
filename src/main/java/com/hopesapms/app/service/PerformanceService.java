@@ -5,7 +5,7 @@ import com.hopesapms.app.dto.SemesterPerformanceDTO;
 import com.hopesapms.app.exception.ResourceNotFoundException;
 import com.hopesapms.app.model.*;
 import com.hopesapms.app.repository.*;
-import com.hopesapms.app.util.GpaCalculationUtil; 
+import com.hopesapms.app.util.GpaCalculationUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
@@ -30,39 +30,40 @@ public class PerformanceService {
 
     @Transactional(readOnly = true)
     public SemesterPerformanceDTO getMyPerformance(Authentication authentication) {
-        
+
         User user = userRepository.findByUsernameAndIsDeletedFalse(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
 
-        List<Enrollment> allEnrollments = enrollmentRepository.findByStudentId(user.getId(), Pageable.unpaged()).getContent();
+        List<Enrollment> allEnrollments = enrollmentRepository.findByStudentId(user.getId(), Pageable.unpaged())
+                .getContent();
 
         List<CoursePerformanceDTO> coursePerformances = new ArrayList<>();
         double totalQualityPoints = 0.0;
         double totalCreditsAttempted = 0.0;
         double totalCreditsEarned = 0.0;
-        
 
         for (Enrollment enrollment : allEnrollments) {
             CourseOffering offering = enrollment.getCourseOffering();
             Course course = offering.getCourse();
-            
-           
-            List<Assessment> assessments = assessmentRepository.findByCourse_IdAndIsDeletedFalse(course.getId());
-            
-            List<Score> scores = scoreRepository.findByEnrollmentId(enrollment.getId(), Pageable.unpaged()).getContent();
+            List<Assessment> assessments = assessmentRepository
+                    .findByCourseOfferingIdAndIsDeletedFalse(offering.getId());
+
+            List<Score> scores = scoreRepository.findByEnrollmentId(enrollment.getId(), Pageable.unpaged())
+                    .getContent();
             Map<Integer, BigDecimal> scoreMap = scores.stream()
                     .collect(Collectors.toMap(s -> s.getAssessment().getId(), Score::getScoreValue));
 
             BigDecimal finalPercentage = calculateWeightedPercentage(assessments, scoreMap);
             String letterGrade = GpaCalculationUtil.calculateLetterGrade(finalPercentage);
             Double gradePoint = GpaCalculationUtil.getGradePoint(letterGrade);
-            Double courseCredits = course.getCredits(); 
+            Double courseCredits = course.getCredits();
 
             CoursePerformanceDTO courseDTO = new CoursePerformanceDTO();
             courseDTO.setCourseCode(course.getCourseCode());
             courseDTO.setCourseTitle(course.getTitle());
             courseDTO.setCredits(courseCredits);
-            courseDTO.setFinalPercentage(finalPercentage.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP));
+            courseDTO.setFinalPercentage(
+                    finalPercentage.multiply(BigDecimal.valueOf(100)).setScale(2, RoundingMode.HALF_UP));
             courseDTO.setLetterGrade(letterGrade);
             courseDTO.setGradePoint(gradePoint);
             coursePerformances.add(courseDTO);
@@ -75,24 +76,19 @@ public class PerformanceService {
                 }
             }
         }
-        
+
         double cgpa = (totalCreditsAttempted == 0) ? 0.0 : (totalQualityPoints / totalCreditsAttempted);
-        
+
         SemesterPerformanceDTO performanceDTO = new SemesterPerformanceDTO();
         performanceDTO.setCourses(coursePerformances);
         performanceDTO.setTotalCreditsAttempted(totalCreditsAttempted);
         performanceDTO.setTotalCreditsEarned(totalCreditsEarned);
-        
-        performanceDTO.setSemesterGPA(cgpa); 
+        performanceDTO.setSemesterGPA(cgpa);
         performanceDTO.setCumulativeGPA(cgpa);
 
         return performanceDTO;
     }
 
-    /**
-     * This logic is duplicated from GradebookService.
-     * It should be moved to a shared service, but is here for simplicity.
-     */
     private BigDecimal calculateWeightedPercentage(List<Assessment> assessments, Map<Integer, BigDecimal> scoreMap) {
         BigDecimal totalPercentage = BigDecimal.ZERO;
         for (Assessment assessment : assessments) {

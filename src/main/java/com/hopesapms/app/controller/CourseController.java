@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
 
+@RestController
 @RequestMapping("/api/courses")
 @RequiredArgsConstructor
 @Tag(name = "Course Management", description = "APIs for managing courses (UC-007)")

@@ -15,7 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import java.util.List; 
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/course-offerings")
@@ -30,9 +30,8 @@ public class CourseOfferingController {
     @Operation(summary = "Create a new course offering (schedule a course)")
     public ResponseEntity<CourseOfferingResponseDTO> createCourseOffering(
             @Valid @RequestBody CourseOfferingRequestDTO dto,
-            Authentication authentication
-        ) {
-        
+            Authentication authentication) {
+
         CourseOfferingResponseDTO created = courseOfferingService.createCourseOffering(dto, authentication);
         return new ResponseEntity<>(created, HttpStatus.CREATED);
     }
@@ -46,15 +45,37 @@ public class CourseOfferingController {
         return ResponseEntity.ok(courseOfferingService.createBulkOfferings(dto, authentication));
     }
 
-     @PutMapping("/{id}/schedule")
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('DEPARTMENT_HEAD', 'SYSTEM_ADMIN')")
+    @Operation(summary = "Update an existing course offering (Assign instructor, change status, etc.)")
+    public ResponseEntity<CourseOfferingResponseDTO> updateCourseOffering(
+            @PathVariable Long id,
+            @Valid @RequestBody CourseOfferingRequestDTO dto,
+            Authentication authentication) {
+
+        CourseOfferingResponseDTO updated = courseOfferingService.updateCourseOffering(id, dto, authentication);
+        return ResponseEntity.ok(updated);
+    }
+
+    @PutMapping("/{id}/schedule")
     @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'PROGRAM_OFFICER')")
     @Operation(summary = "Update schedule slots and status (Program Officer)")
     public ResponseEntity<CourseOfferingResponseDTO> updateSchedule(
             @PathVariable Long id,
             @Valid @RequestBody UpdateScheduleRequestDTO dto) {
-        
+
         CourseOfferingResponseDTO updated = courseOfferingService.updateCourseSchedule(id, dto);
         return ResponseEntity.ok(updated);
+    }
+
+    @PutMapping("/bulk")
+    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD')")
+    @Operation(summary = "Bulk update/create offerings for a specific course in a semester")
+    public ResponseEntity<List<CourseOfferingResponseDTO>> bulkUpdateOfferings(
+            @Valid @RequestBody BulkCourseOfferingRequestDTO dto,
+            Authentication authentication) {
+
+        return ResponseEntity.ok(courseOfferingService.bulkUpdateOfferings(dto, authentication));
     }
 
     @GetMapping("/available-rooms")
@@ -63,38 +84,47 @@ public class CourseOfferingController {
             @RequestParam Long semesterId,
             @RequestParam String day,
             @RequestParam String periods) {
-        
+
         return ResponseEntity.ok(courseOfferingService.getAvailableRooms(semesterId, day, periods));
     }
 
-   /*  @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN','DEPARTMENT_HEAD', 'PROGRAM_OFFICER')")
-    @Operation(summary = "Import course offerings from an Excel file")
-    public ResponseEntity<Map<String, Object>> importOfferings(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam(defaultValue = "PLANNED") String status,
-            Authentication authentication
-        ) {
-                
-        Map<String, Object> result = courseOfferingImportService.importOfferings(file, status, authentication);
-        
-        if (result.get("errors") != null && !((List)result.get("errors")).isEmpty()) {
-            
-            return ResponseEntity.status(HttpStatus.MULTI_STATUS).body(result);
-        }
-        
-        return ResponseEntity.ok(result);
-    }
-    */
+    /*
+     * @PostMapping(value = "/import", consumes =
+     * MediaType.MULTIPART_FORM_DATA_VALUE)
+     * 
+     * @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN','DEPARTMENT_HEAD', 'PROGRAM_OFFICER')"
+     * )
+     * 
+     * @Operation(summary = "Import course offerings from an Excel file")
+     * public ResponseEntity<Map<String, Object>> importOfferings(
+     * 
+     * @RequestParam("file") MultipartFile file,
+     * 
+     * @RequestParam(defaultValue = "PLANNED") String status,
+     * Authentication authentication
+     * ) {
+     * 
+     * Map<String, Object> result =
+     * courseOfferingImportService.importOfferings(file, status, authentication);
+     * 
+     * if (result.get("errors") != null && !((List)result.get("errors")).isEmpty())
+     * {
+     * 
+     * return ResponseEntity.status(HttpStatus.MULTI_STATUS).body(result);
+     * }
+     * 
+     * return ResponseEntity.ok(result);
+     * }
+     */
     @GetMapping("/by-semester/{semesterId}")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get all course offerings for a specific semester")
     public ResponseEntity<List<CourseOfferingResponseDTO>> getOfferingsBySemester(
-            @PathVariable Long semesterId) { 
-        
+            @PathVariable Long semesterId) {
+
         List<CourseOfferingResponseDTO> offerings = courseOfferingService
-            .getOfferingsBySemester(semesterId);
-        
+                .getOfferingsBySemester(semesterId);
+
         return ResponseEntity.ok(offerings);
     }
 }

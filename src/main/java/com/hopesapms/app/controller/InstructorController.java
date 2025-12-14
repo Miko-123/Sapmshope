@@ -63,25 +63,37 @@ public class InstructorController {
         return ResponseEntity.ok(instructorService.getInstructorDashboardStats(authentication.getName()));
     }
 
+    @PostMapping("/courses/{courseId}/grades/submit")
+    @PreAuthorize("hasAuthority('INSTRUCTOR')")
+    @Operation(summary = "Calculate and save final grades for all students")
+    public ResponseEntity<String> submitFinalGrades(
+            @PathVariable Long courseId,
+            Authentication authentication) {
+
+        instructorService.submitFinalGrades(courseId, authentication.getName());
+        return ResponseEntity.ok("Grades submitted successfully. Transcripts updated.");
+    }
+
     @GetMapping("/courses/{courseId}/grades/download")
     @PreAuthorize("hasAuthority('INSTRUCTOR')")
     public ResponseEntity<byte[]> downloadGradeReport(@PathVariable Long courseId) throws IOException {
-        
+
         CourseOffering course = courseOfferingRepository.findById(courseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Course not found"));
 
         List<Enrollment> enrollments = enrollmentRepository.findByCourseOfferingId(courseId);
-    
-        List<Assessment> assessments = assessmentRepository.findByCourse_IdAndIsDeletedFalse(course.getCourse().getId().intValue());
-        
+
+        List<Assessment> assessments = assessmentRepository
+                .findByCourseOfferingIdAndIsDeletedFalse(course.getId());
+
         List<Score> allScores = scoreRepository.findByEnrollmentIdIn(
-                enrollments.stream().map(Enrollment::getId).collect(Collectors.toList())
-        );
+                enrollments.stream().map(Enrollment::getId).collect(Collectors.toList()));
 
         byte[] pdfBytes = reportService.generateCourseGradeReport(course, enrollments, assessments, allScores);
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=Grade_Report_" + course.getCourse().getCourseCode() + ".pdf")
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=Grade_Report_" + course.getCourse().getCourseCode() + ".pdf")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdfBytes);
     }

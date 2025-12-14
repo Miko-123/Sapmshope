@@ -310,7 +310,6 @@ public class CourseService {
             dto.setDepartmentName(course.getDepartment().getName());
         }
 
-        // fetch prerequisites and map them
         List<Prerequisite> prereqList = prerequisiteRepository.findByCourseIdWithDetails(course.getId());
         List<PrerequisiteResponseDTO> prereqDtos = prereqList.stream()
                 .filter(p -> !p.isDeleted())

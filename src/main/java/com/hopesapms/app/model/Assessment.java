@@ -21,14 +21,14 @@ public class Assessment {
     private Integer id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "course_id", nullable = false)
-    private Course course;
+    @JoinColumn(name = "course_offering_id", nullable = false)
+    private CourseOffering courseOffering;
 
     @Column(length = 255, nullable = false)
     private String name;
 
     @Column(length = 50, nullable = false)
-    private String type; 
+    private String type;
 
     @Column(name = "max_score", precision = 5, scale = 2, nullable = false)
     private BigDecimal maxScore;

@@ -15,6 +15,8 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
 
         List<CourseOffering> findByAcademicSemester_IdAndIsDeletedFalse(Long semesterId);
 
+        List<CourseOffering> findByAcademicSemester_IdAndCourse_IdAndIsDeletedFalse(Long semesterId, Integer courseId);
+
         List<CourseOffering> findBySection_IdAndAcademicSemester_IdAndStatusAndIsDeletedFalse(
                         Integer sectionId,
                         Long semesterId,
@@ -31,7 +33,7 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
 
         @Query("SELECT co FROM CourseOffering co " +
                         "JOIN FETCH co.course c " +
-                        "JOIN FETCH co.instructor " +
+                        "LEFT JOIN FETCH co.instructor " +
                         "JOIN FETCH co.section " +
                         "JOIN FETCH co.academicSemester " +
                         "WHERE co.academicSemester.id = :semesterId " +
@@ -49,4 +51,9 @@ public interface CourseOfferingRepository extends JpaRepository<CourseOffering, 
         List<CourseOffering> findAllActiveInSemester(Long semesterId, String status);
 
         List<CourseOffering> findByInstructor_User_IdAndIsDeletedFalse(Integer userId);
+
+        boolean existsByAcademicSemester_IdAndCourse_IdAndSection_IdAndIsDeletedFalse(
+                        Long semesterId, Integer courseId, Integer sectionId);
+
+        long countByAcademicSemesterIdAndIsDeletedFalse(Long semesterId);
 }
