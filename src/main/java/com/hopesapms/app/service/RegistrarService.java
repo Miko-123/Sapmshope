@@ -6,6 +6,8 @@ import com.hopesapms.app.model.AcademicSemester;
 import com.hopesapms.app.repository.AcademicSemesterRepository;
 import com.hopesapms.app.repository.CourseOfferingRepository;
 import com.hopesapms.app.repository.EnrollmentRepository;
+import com.hopesapms.app.repository.StudentRepository;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,18 +22,18 @@ public class RegistrarService {
     private final AcademicSemesterRepository semesterRepository;
     private final CourseOfferingRepository offeringRepository;
     private final EnrollmentRepository enrollmentRepository;
+    private final StudentRepository studentRepository;
 
     @Transactional(readOnly = true)
     public RegistrarDashboardDTO getDashboardStats() {
-        // 1. Get Current Semester
+
         AcademicSemester current = semesterRepository.findByIsCurrentTrue()
                 .orElseThrow(() -> new ResourceNotFoundException("No active semester found."));
 
         long activeOfferings = offeringRepository.countByAcademicSemesterIdAndIsDeletedFalse(current.getId());
 
         
-        long totalEnrollments = enrollmentRepository.countByCourseOffering_AcademicSemester_IdAndStatus(
-                current.getId(), "ENROLLED");
+        long totalStudents = studentRepository.countByIsDeletedFalse();
 
 
         long pendingGrades = enrollmentRepository.countByCourseOffering_AcademicSemester_IdAndFinalGradeIsNull(
@@ -45,7 +47,7 @@ public class RegistrarService {
                 .currentSemesterName(current.getName())
                 .semesterStatus(current.getStatus())
                 .totalActiveOfferings(activeOfferings)
-                .totalEnrolledStudents(totalEnrollments)
+                .totalEnrolledStudents(totalStudents)
                 .studentsWithPendingGrades(pendingGrades)
                 .semesterProgressPercentage(progress)
                 .build();

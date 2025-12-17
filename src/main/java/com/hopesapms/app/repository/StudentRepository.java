@@ -15,6 +15,8 @@ import java.util.Optional;
 @Repository
 public interface StudentRepository extends JpaRepository<Student, Integer> {
 
+        long countByIsDeletedFalse();
+
         boolean existsByStudentIdAndIsDeletedFalse(String studentId);
 
         List<Student> findBySection_IdAndIsDeletedFalse(Integer sectionId);

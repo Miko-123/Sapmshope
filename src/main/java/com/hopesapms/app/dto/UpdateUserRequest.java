@@ -22,6 +22,8 @@ public class UpdateUserRequest {
     @NotBlank(message = "Gender is required")
     private String gender;
 
+    private String password;
+
     private String phoneNumber;
     private String profilePictureUrl;
     

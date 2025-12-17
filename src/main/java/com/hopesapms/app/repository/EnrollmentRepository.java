@@ -46,7 +46,6 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Integer>
                      @Param("studentId") Integer studentId,
                      @Param("courseId") Integer courseId);
 
-       // For the GradebookService (finds all students in one offering)
        @Query("SELECT e FROM Enrollment e " +
                      "JOIN FETCH e.student s " +
                      "JOIN FETCH s.user " +
