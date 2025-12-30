@@ -17,4 +17,5 @@ public class UpdateDepartmentDetailsRequest {
     
     private String contactPhone;
     private String officeLocation;
+    private String description;
 }

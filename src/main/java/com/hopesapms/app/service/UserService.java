@@ -18,16 +18,11 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,10 +36,6 @@ public class UserService {
 
         private final InstructorRepository instructorRepository;
         private final StudentRepository studentRepository;
-
-        private final Map<String, String> otpCache = new HashMap<>();
-        private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+?[1-9]\\d{1,14}$");
-        private static final Pattern PASSWORD_PATTERN = Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]{8,}$");
 
         @Transactional
         public UserResponseDTO createUser(CreateUserRequest request) {
@@ -142,15 +133,12 @@ public class UserService {
                 return mapToResponse(updatedUser);
         }
 
-        // In UserService.java
-
         @Transactional
         public UserResponseDTO updateUserProfile(Integer userId, UserProfileUpdateRequest request) {
                 User user = userRepository.findById(userId)
                                 .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
-                if (!user.getUsername().equals(request.getUsername()) &&
-                                userRepository.existsByUsernameAndIsDeletedFalse(request.getUsername())) {
+                if (userRepository.existsByUsernameAndIsDeletedFalseAndIdNot(request.getUsername(), userId)) {
                         throw new IllegalArgumentException("Username already taken");
                 }
                 user.setUsername(request.getUsername());

@@ -2,12 +2,19 @@ package com.hopesapms.app.controller;
 
 import com.hopesapms.app.dto.AssignStaffRequestDTO;
 import com.hopesapms.app.dto.UserResponseDTO;
+import com.hopesapms.app.exception.ResourceNotFoundException;
+import com.hopesapms.app.model.User;
+import com.hopesapms.app.repository.UserRepository;
 import com.hopesapms.app.dto.CreateDepartmentRequest;
+import com.hopesapms.app.dto.DepartmentAttendanceReportDTO;
 import com.hopesapms.app.dto.DepartmentResponseDTO;
+import com.hopesapms.app.dto.DeptCourseDTO;
+import com.hopesapms.app.dto.DpHdDashboardStatsDTO;
 import com.hopesapms.app.dto.ProgramResponseDTO;
 import com.hopesapms.app.dto.UpdateDepartmentDetailsRequest;
 import com.hopesapms.app.service.DepartmentService;
 import com.hopesapms.app.service.ProgramService;
+import com.hopesapms.app.service.ReportService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -15,12 +22,12 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-
 
 @RestController
 @RequestMapping("/api/departments")
@@ -30,6 +37,8 @@ public class DepartmentController {
 
     private final DepartmentService departmentService;
     private final ProgramService programService;
+    private final ReportService reportService;
+    private final UserRepository userRepository;
 
     @PostMapping("/create")
     @PreAuthorize("hasAuthority('SYSTEM_ADMIN')")
@@ -48,6 +57,12 @@ public class DepartmentController {
         return ResponseEntity.ok(programs);
     }
 
+    @GetMapping("/courses")
+    @PreAuthorize("hasAuthority('DEPARTMENT_HEAD')")
+    public ResponseEntity<List<DeptCourseDTO>> getDepartmentCourses(Authentication authentication) {
+        return ResponseEntity.ok(departmentService.getCoursesForDeptHead(authentication));
+    }
+
     @GetMapping("/{departmentId}/instructors")
     @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'PROGRAM_OFFICER')")
     @Operation(summary = "Get all instructors for a specific department")
@@ -55,7 +70,6 @@ public class DepartmentController {
         List<UserResponseDTO> instructors = departmentService.getInstructorsByDepartment(departmentId);
         return ResponseEntity.ok(instructors);
     }
-    
 
     @PutMapping("/{departmentId}/assign-head/{userId}")
     @PreAuthorize("hasAuthority('SYSTEM_ADMIN')")
@@ -75,6 +89,12 @@ public class DepartmentController {
         return ResponseEntity.ok(departmentService.getUnassignedHeads());
     }
 
+    @GetMapping("/my-department")
+    @PreAuthorize("hasAuthority('DEPARTMENT_HEAD')")
+    public ResponseEntity<DepartmentResponseDTO> getMyDepartment(Authentication authentication) {
+        return ResponseEntity.ok(departmentService.getMyDepartment(authentication));
+    }
+
     @PutMapping("/my-department/details")
     @PreAuthorize("hasAuthority('DEPARTMENT_HEAD')")
     @Operation(summary = "Update my department details (Dept Head Only)")
@@ -83,6 +103,12 @@ public class DepartmentController {
 
         DepartmentResponseDTO updatedDept = departmentService.updateMyDepartmentDetails(dto, authentication);
         return ResponseEntity.ok(updatedDept);
+    }
+
+    @GetMapping("/dashboard-stats")
+    @PreAuthorize("hasAuthority('DEPARTMENT_HEAD')")
+    public ResponseEntity<DpHdDashboardStatsDTO> getDashboardStats(Authentication authentication) {
+        return ResponseEntity.ok(departmentService.getDashboardStats(authentication));
     }
 
     @GetMapping
@@ -124,5 +150,35 @@ public class DepartmentController {
 
         UserResponseDTO assignedUser = departmentService.assignStaffToDepartment(departmentId, dto, authentication);
         return ResponseEntity.ok(assignedUser);
+    }
+
+    @GetMapping("/reports/attendance/instructors")
+    @PreAuthorize("hasAuthority('DEPARTMENT_HEAD')")
+    @Operation(summary = "Get instructor attendance report for the department")
+    public ResponseEntity<List<DepartmentAttendanceReportDTO.InstructorStats>> getInstructorAttendanceReport(
+            Authentication authentication) {
+        User user = userRepository.findByEmailAndIsDeletedFalse(authentication.getName())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (user.getDepartment() == null) {
+            throw new AccessDeniedException("User is not assigned to a department");
+        }
+
+        return ResponseEntity.ok(reportService.getDepartmentInstructorAttendance(user.getDepartment().getId()));
+    }
+
+    @GetMapping("/reports/attendance/students")
+    @PreAuthorize("hasAuthority('DEPARTMENT_HEAD')")
+    @Operation(summary = "Get student attendance report for the department")
+    public ResponseEntity<List<DepartmentAttendanceReportDTO.StudentStats>> getStudentAttendanceReport(
+            Authentication authentication) {
+        User user = userRepository.findByEmailAndIsDeletedFalse(authentication.getName())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (user.getDepartment() == null) {
+            throw new AccessDeniedException("User is not assigned to a department");
+        }
+
+        return ResponseEntity.ok(reportService.getDepartmentStudentAttendance(user.getDepartment().getId()));
     }
 }

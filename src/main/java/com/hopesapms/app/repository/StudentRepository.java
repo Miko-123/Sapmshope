@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
@@ -74,4 +75,17 @@ public interface StudentRepository extends JpaRepository<Student, Integer> {
         Page<Student> searchStudents(String query, Pageable pageable);
 
         Optional<Student> findByUser_Id(Integer id);
+
+        @Query("SELECT COUNT(s) FROM Student s WHERE s.program.department.id = :deptId AND s.isDeleted = false")
+        long countByDepartmentId(@Param("deptId") Long deptId);
+
+        @Query("SELECT COUNT(s) FROM Student s WHERE s.program.department.id = :deptId AND s.yearLevel = :yearLevel AND s.isDeleted = false")
+        long countByDepartmentIdAndYearLevel(@Param("deptId") Long deptId, @Param("yearLevel") int yearLevel);
+
+        @Query("SELECT s FROM Student s JOIN s.user u WHERE " +
+                        "(LOWER(u.firstName) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+                        "LOWER(s.studentId) LIKE LOWER(CONCAT('%', :query, '%'))) " +
+                        "AND s.department.id = :deptId AND s.isDeleted = false")
+        Page<Student> searchStudentsByDepartment(@Param("query") String query, @Param("deptId") Long deptId,
+                        Pageable pageable);
 }

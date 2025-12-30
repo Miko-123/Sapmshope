@@ -11,6 +11,8 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import java.util.stream.Collectors;
+import com.fasterxml.jackson.annotation.JsonIdentityInfo;
+import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -22,6 +24,11 @@ import java.util.Set;
         @Index(columnList = "email"),
         @Index(columnList = "username")
 })
+@JsonIdentityInfo(
+    generator = ObjectIdGenerators.PropertyGenerator.class, 
+    property = "id", 
+    scope = User.class 
+)
 @Getter
 @Setter
 @NoArgsConstructor

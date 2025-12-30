@@ -26,7 +26,7 @@ public class CourseOfferingController {
     private final CourseOfferingService courseOfferingService;
 
     @PostMapping
-    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'PROGRAM_OFFICER')")
+    @PreAuthorize("hasAnyAuthority('DEPARTMENT_HEAD')")
     @Operation(summary = "Create a new course offering (schedule a course)")
     public ResponseEntity<CourseOfferingResponseDTO> createCourseOffering(
             @Valid @RequestBody CourseOfferingRequestDTO dto,
@@ -37,7 +37,7 @@ public class CourseOfferingController {
     }
 
     @PostMapping("/bulk-create")
-    @PreAuthorize("hasAnyAuthority('DEPARTMENT_HEAD', 'SYSTEM_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('DEPARTMENT_HEAD')")
     @Operation(summary = "Create a new course offering bulk")
     public ResponseEntity<List<CourseOfferingResponseDTO>> createBulkOfferings(
             @RequestBody BulkCourseOfferingRequestDTO dto,
@@ -88,34 +88,6 @@ public class CourseOfferingController {
         return ResponseEntity.ok(courseOfferingService.getAvailableRooms(semesterId, day, periods));
     }
 
-    /*
-     * @PostMapping(value = "/import", consumes =
-     * MediaType.MULTIPART_FORM_DATA_VALUE)
-     * 
-     * @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN','DEPARTMENT_HEAD', 'PROGRAM_OFFICER')"
-     * )
-     * 
-     * @Operation(summary = "Import course offerings from an Excel file")
-     * public ResponseEntity<Map<String, Object>> importOfferings(
-     * 
-     * @RequestParam("file") MultipartFile file,
-     * 
-     * @RequestParam(defaultValue = "PLANNED") String status,
-     * Authentication authentication
-     * ) {
-     * 
-     * Map<String, Object> result =
-     * courseOfferingImportService.importOfferings(file, status, authentication);
-     * 
-     * if (result.get("errors") != null && !((List)result.get("errors")).isEmpty())
-     * {
-     * 
-     * return ResponseEntity.status(HttpStatus.MULTI_STATUS).body(result);
-     * }
-     * 
-     * return ResponseEntity.ok(result);
-     * }
-     */
     @GetMapping("/by-semester/{semesterId}")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Get all course offerings for a specific semester")
@@ -126,5 +98,17 @@ public class CourseOfferingController {
                 .getOfferingsBySemester(semesterId);
 
         return ResponseEntity.ok(offerings);
+    }
+
+    @PostMapping("/copy-semester")
+    @PreAuthorize("hasAuthority('DEPARTMENT_HEAD')")
+    public ResponseEntity<String> copySemesterOfferings(
+            @RequestParam Long sourceSemesterId,
+            @RequestParam Long targetSemesterId,
+            Authentication authentication) {
+
+        int count = courseOfferingService.copyDepartmentOfferings(sourceSemesterId, targetSemesterId,
+                authentication.getName());
+        return ResponseEntity.ok("Successfully copied " + count + " course offerings and schedules.");
     }
 }

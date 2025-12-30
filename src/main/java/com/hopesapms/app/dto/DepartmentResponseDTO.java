@@ -11,6 +11,7 @@ public class DepartmentResponseDTO {
     private String contactEmail;
     private String contactPhone;
     private String officeLocation;
+    private String description;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private Integer departmentHeadId;

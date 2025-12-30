@@ -27,7 +27,7 @@ public class AcademicSemesterController {
     private final SemesterRolloverService rolloverService;
 
     @PostMapping
-    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'REGISTRAR')")
+    @PreAuthorize("hasAnyAuthority('REGISTRAR')")
     @Operation(summary = "Create a new academic semester")
     public ResponseEntity<AcademicSemesterResponseDTO> createSemester(
             @Valid @RequestBody AcademicSemesterRequestDTO dto) {
@@ -63,7 +63,7 @@ public class AcademicSemesterController {
     }
 
     @PostMapping("/rollover")
-    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'REGISTRAR')")
+    @PreAuthorize("hasAnyAuthority('REGISTRAR')")
     @Operation(summary = "Copy course offerings from one semester to another", description = "Creates new offering rows for the target semester. Does NOT copy students or grades.")
     public ResponseEntity<String> rolloverSemester(@RequestBody SemesterRolloverRequest request) {
         int count = rolloverService.rolloverSemester(request);

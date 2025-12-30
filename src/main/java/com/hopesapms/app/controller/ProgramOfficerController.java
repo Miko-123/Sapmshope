@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,8 +31,11 @@ public class ProgramOfficerController {
     @PostMapping("/attendance")
     @PreAuthorize("hasAnyAuthority('REGISTRAR', 'DEPARTMENT_HEAD', 'PROGRAM_OFFICER')")
     @Operation(summary = "Mark instructor as Present/Absent")
-    public ResponseEntity<Void> markAttendance(@RequestBody MarkInstructorRequest request) {
-        service.markInstructorAttendance(request);
+    public ResponseEntity markAttendance(
+            @RequestBody MarkInstructorRequest request,
+            Authentication authentication) {
+
+        service.markInstructorAttendance(request, authentication.getName());
         return ResponseEntity.ok().build();
     }
 }

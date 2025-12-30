@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import com.fasterxml.jackson.annotation.JsonIdentityInfo;
+import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -13,6 +15,11 @@ import java.time.LocalDateTime;
         @Index(columnList = "user_id"),
         @Index(columnList = "student_id")
 })
+@JsonIdentityInfo(
+    generator = ObjectIdGenerators.PropertyGenerator.class, 
+    property = "id", 
+    scope = Student.class 
+)
 @Getter
 @Setter
 @NoArgsConstructor

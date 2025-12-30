@@ -183,8 +183,12 @@ public class CourseOfferingService {
                 for (BulkCourseOfferingRequestDTO.SectionInstructorPair pair : dto.getAssignments()) {
                         processedSectionIds.add(pair.getSectionId());
 
-                        Instructor instructor = instructorRepository.findByUser_Id(pair.getInstructorId().intValue())
-                                        .orElseThrow(() -> new ResourceNotFoundException("Instructor not found"));
+                        Instructor instructor = null;
+                        if (pair.getInstructorId() != null && pair.getInstructorId() > 0) {
+                                instructor = instructorRepository.findByUser_Id(pair.getInstructorId().intValue())
+                                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                                "Instructor not found"));
+                        }
 
                         if (existingMap.containsKey(pair.getSectionId())) {
 
@@ -293,6 +297,66 @@ public class CourseOfferingService {
                         offerings = courseOfferingRepository.findByAcademicSemesterId(semesterId);
                 }
                 return offerings.stream().map(this::mapToResponseDTO).collect(Collectors.toList());
+        }
+
+        @Transactional
+        public int copyDepartmentOfferings(Long sourceSemesterId, Long targetSemesterId, String username) {
+
+                User deptHead = userRepository.findByEmailAndIsDeletedFalse(username)
+                                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+                if (deptHead.getDepartment() == null) {
+                        throw new IllegalStateException("You are not assigned to a department.");
+                }
+                Long deptId = deptHead.getDepartment().getId();
+
+                AcademicSemester target = academicSemesterRepository.findById(targetSemesterId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Target semester not found"));
+
+                if (target.isArchived()) {
+                        throw new IllegalStateException("Cannot copy into an ARCHIVED semester.");
+                }
+
+                List<CourseOffering> sourceOfferings = courseOfferingRepository
+                                .findBySemesterAndDepartment(sourceSemesterId, deptId);
+
+                int count = 0;
+
+                for (CourseOffering original : sourceOfferings) {
+                        boolean exists = courseOfferingRepository
+                                        .existsByAcademicSemester_IdAndCourse_IdAndSection_IdAndIsDeletedFalse(
+                                                        targetSemesterId,
+                                                        original.getCourse().getId(),
+                                                        original.getSection().getId());
+
+                        if (!exists) {
+
+                                CourseOffering newOffering = CourseOffering.builder()
+                                                .academicSemester(target)
+                                                .course(original.getCourse())
+                                                .section(original.getSection())
+                                                .instructor(original.getInstructor())
+                                                .yearLevels(original.getYearLevels())
+                                                .contactHours(original.getContactHours())
+                                                .status("PLANNED")
+                                                .isDeleted(false)
+                                                .build();
+
+                                CourseOffering saved = courseOfferingRepository.save(newOffering);
+
+                                if (original.getScheduleSlots() != null && !original.getScheduleSlots().isEmpty()) {
+                                        for (CourseSchedule oldSlot : original.getScheduleSlots()) {
+                                                saved.addScheduleSlot(
+                                                                oldSlot.getDay(),
+                                                                oldSlot.getPeriods(),
+                                                                oldSlot.getRoom());
+                                        }
+                                        courseOfferingRepository.save(saved);
+                                }
+                                count++;
+                        }
+                }
+                return count;
         }
 
         private void validateConflicts(CourseOffering currentOffering, List<ScheduleSlotDTO> newSlots) {
@@ -469,6 +533,7 @@ public class CourseOfferingService {
                         dto.setInstructorId(offering.getInstructor().getId());
                         if (offering.getInstructor().getUser() != null) {
                                 dto.setInstructorName(offering.getInstructor().getUser().getFirstName() + " "
+                                                + offering.getInstructor().getUser().getLastName() + " "
                                                 + offering.getInstructor().getUser().getMiddleName());
                         } else {
                                 dto.setInstructorName("Unknown Instructor");

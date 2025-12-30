@@ -4,8 +4,10 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
+
+import com.fasterxml.jackson.annotation.JsonIdentityInfo;
+import com.fasterxml.jackson.annotation.ObjectIdGenerators;
+
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -13,6 +15,11 @@ import java.util.Set;
 
 @Entity
 @Table(name = "course")
+@JsonIdentityInfo(
+    generator = ObjectIdGenerators.PropertyGenerator.class, 
+    property = "id", 
+    scope = Course.class 
+)
 @Getter
 @Setter
 @NoArgsConstructor

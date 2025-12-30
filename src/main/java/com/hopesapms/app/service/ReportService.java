@@ -1,17 +1,27 @@
 package com.hopesapms.app.service;
 
 import com.hopesapms.app.model.*;
+import com.hopesapms.app.repository.AttendanceRepository;
+import com.hopesapms.app.repository.CourseOfferingRepository;
+import com.hopesapms.app.repository.EnrollmentRepository;
 import com.hopesapms.app.repository.GradingScaleRepository;
 import com.lowagie.text.*;
 import com.lowagie.text.pdf.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import com.hopesapms.app.repository.InstructorAttendanceRepository;
+import com.hopesapms.app.repository.InstructorRepository;
+import com.hopesapms.app.dto.DepartmentAttendanceReportDTO;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.math.BigDecimal; // Imported BigDecimal
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -21,6 +31,11 @@ import java.util.stream.Collectors;
 public class ReportService {
 
     private final GradingScaleRepository gradingScaleRepository;
+    private final EnrollmentRepository enrollmentRepository;
+    private final InstructorRepository instructorRepository;
+    private final InstructorAttendanceRepository instructorAttendanceRepository;
+    private final AttendanceRepository studentAttendanceRepository;
+    private final CourseOfferingRepository courseOfferingRepository;
 
     public byte[] generateCourseGradeReport(CourseOffering course, List<Enrollment> enrollments,
             List<Assessment> assessments, List<Score> allScores) throws IOException {
@@ -132,6 +147,7 @@ public class ReportService {
             String instructorName = "TBD";
             if (course.getInstructor() != null && course.getInstructor().getUser() != null) {
                 instructorName = course.getInstructor().getUser().getFirstName() + " "
+                        + course.getInstructor().getUser().getMiddleName() + " "
                         + course.getInstructor().getUser().getLastName();
             }
 
@@ -281,16 +297,135 @@ public class ReportService {
     }
 
     private void addInfoRow(PdfPTable table, String label, String value) {
-    PdfPCell labelCell = new PdfPCell(new Phrase(label, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
-    labelCell.setBorder(Rectangle.NO_BORDER);
-    labelCell.setPadding(3);
+        PdfPCell labelCell = new PdfPCell(new Phrase(label, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10)));
+        labelCell.setBorder(Rectangle.NO_BORDER);
+        labelCell.setPadding(3);
 
-    PdfPCell valueCell = new PdfPCell(new Phrase(value, FontFactory.getFont(FontFactory.HELVETICA, 10)));
-    valueCell.setBorder(Rectangle.NO_BORDER);
-    valueCell.setPadding(3);
+        PdfPCell valueCell = new PdfPCell(new Phrase(value, FontFactory.getFont(FontFactory.HELVETICA, 10)));
+        valueCell.setBorder(Rectangle.NO_BORDER);
+        valueCell.setPadding(3);
 
-    table.addCell(labelCell);
-    table.addCell(valueCell);
-}
+        table.addCell(labelCell);
+        table.addCell(valueCell);
+    }
+
+    public Map<String, Object> getDepartmentAnalytics(Long deptId) {
+
+        List<Map<String, Object>> gradeDist = enrollmentRepository.findGradeDistributionByDepartment(deptId);
+
+        long passCount = gradeDist.stream()
+                .filter(m -> !m.get("label").equals("F"))
+                .mapToLong(m -> (Long) m.get("value"))
+                .sum();
+
+        long failCount = gradeDist.stream()
+                .filter(m -> m.get("label").equals("F"))
+                .mapToLong(m -> (Long) m.get("value"))
+                .sum();
+
+        return Map.of(
+                "gradeDistribution", gradeDist,
+                "passRate", Map.of("Pass", passCount, "Fail", failCount));
+    }
+
+    public List<Map<String, Object>> getRegistrarEnrollmentTrends() {
+        return enrollmentRepository.findEnrollmentTrends();
+    }
+
+    @Transactional(readOnly = true)
+    public List<DepartmentAttendanceReportDTO.InstructorStats> getDepartmentInstructorAttendance(Long departmentId) {
+
+        List<Instructor> departmentInstructors = instructorRepository.findAll().stream()
+                .filter(i -> i.getUser().getDepartment() != null &&
+                        i.getUser().getDepartment().getId().equals(departmentId))
+                .collect(Collectors.toList());
+
+        List<InstructorAttendance> allAttendance = instructorAttendanceRepository
+                .findByDepartmentIdAndCurrentSemester(departmentId.intValue());
+
+        Map<Integer, List<InstructorAttendance>> attendanceMap = allAttendance.stream()
+                .collect(Collectors.groupingBy(ia -> ia.getInstructor().getId()));
+
+        List<DepartmentAttendanceReportDTO.InstructorStats> report = new ArrayList<>();
+
+        for (Instructor instructor : departmentInstructors) {
+
+            List<InstructorAttendance> records = attendanceMap.getOrDefault(instructor.getId(), Collections.emptyList());
+
+            long totalSessions = records.size();
+            long presentCount = records.stream()
+                    .filter(r -> "PRESENT".equalsIgnoreCase(r.getStatus()))
+                    .count();
+            long absentCount = records.stream()
+                    .filter(r -> "ABSENT".equalsIgnoreCase(r.getStatus()))
+                    .count();
+
+            double rate = totalSessions > 0 ? ((double) presentCount / totalSessions) * 100.0 : 0.0;
+
+            report.add(DepartmentAttendanceReportDTO.InstructorStats.builder()
+                    .instructorId(instructor.getId())
+                    .instructorName(instructor.getUser().getFirstName() + " " + instructor.getUser().getLastName())
+                    .totalSessionsScheduled(totalSessions)
+                    .presentCount(presentCount)
+                    .absentCount(absentCount)
+                    .attendanceRate(Math.round(rate * 10.0) / 10.0)
+                    .build());
+        }
+
+        return report;
+    }
+
+    @Transactional(readOnly = true)
+    public List<DepartmentAttendanceReportDTO.StudentStats> getDepartmentStudentAttendance(Long departmentId) {
+
+        List<CourseOffering> offerings = courseOfferingRepository
+                .findByCourse_Department_IdAndAcademicSemester_IsCurrentTrue(departmentId);
+
+        List<DepartmentAttendanceReportDTO.StudentStats> report = new ArrayList<>();
+
+        for (CourseOffering offering : offerings) {
+
+            List<Enrollment> enrollments = enrollmentRepository.findByCourseOfferingId(offering.getId());
+
+            for (Enrollment enrollment : enrollments) {
+                List<Attendance> records = studentAttendanceRepository
+                        .findByStudentAndCourse(enrollment.getStudent().getId(), offering.getId());
+
+                long totalClasses = records.size();
+
+                if (totalClasses == 0)
+                    continue;
+
+                long absentClasses = records.stream()
+                        .filter(a -> "ABSENT".equalsIgnoreCase(a.getStatus()))
+                        .count();
+
+                double absencePercentage = ((double) absentClasses / totalClasses) * 100.0;
+
+                String academicStatus = "ACTIVE";
+
+                if ("NG".equals(enrollment.getFinalGrade()) || absencePercentage >= 25.0) {
+                    academicStatus = "NG";
+                } else if (absencePercentage >= 20.0) {
+                    academicStatus = "WARNING";
+                }
+
+                report.add(DepartmentAttendanceReportDTO.StudentStats.builder()
+                        .studentId(enrollment.getStudent().getStudentId())
+                        .studentName(enrollment.getStudent().getUser().getFirstName() + " " +
+                                enrollment.getStudent().getUser().getLastName())
+                        .courseCode(offering.getCourse().getCourseCode())
+                        .courseTitle(offering.getCourse().getTitle())
+                        .sectionName(offering.getSection().getName())
+                        .totalSessions(totalClasses)
+                        .absentSessions(absentClasses)
+                        .absencePercentage(Math.round(absencePercentage * 10.0) / 10.0)
+                        .status(academicStatus)
+                        .build());
+            }
+        }
+
+        return report;
+    }
 
 }

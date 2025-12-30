@@ -1,5 +1,7 @@
 package com.hopesapms.app.service;
 
+import com.hopesapms.app.dto.GradingScaleDTO;
+import com.hopesapms.app.exception.ResourceNotFoundException;
 import com.hopesapms.app.model.GradingScale;
 import com.hopesapms.app.repository.GradingScaleRepository;
 import jakarta.annotation.PostConstruct;
@@ -7,7 +9,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -59,11 +63,45 @@ public class GradingService {
     }
 
     @Transactional(readOnly = true)
+    public List<GradingScaleDTO> getAllScales() {
+        return gradingScaleRepository.findAll().stream()
+                .sorted(Comparator.comparingDouble(GradingScale::getGradePoint).reversed())
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public GradingScaleDTO updateScale(Integer id, GradingScaleDTO dto) {
+        GradingScale scale = gradingScaleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Grading scale not found"));
+
+        scale.setMinScore(dto.getMinScore());
+        scale.setMaxScore(dto.getMaxScore());
+        scale.setGradePoint(dto.getGradePoint());
+        scale.setDescription(dto.getDescription());
+        scale.setLetterGrade(dto.getLetterGrade());
+
+        GradingScale updated = gradingScaleRepository.save(scale);
+        return mapToDTO(updated);
+    }
+
+    @Transactional(readOnly = true)
     public Double getPointsForLetter(String letterGrade) {
         return gradingScaleRepository.findAll().stream()
                 .filter(g -> g.getLetterGrade().equalsIgnoreCase(letterGrade))
                 .findFirst()
                 .map(GradingScale::getGradePoint)
                 .orElse(0.0);
+    }
+
+    private GradingScaleDTO mapToDTO(GradingScale entity) {
+        GradingScaleDTO dto = new GradingScaleDTO();
+        dto.setId(entity.getId());
+        dto.setLetterGrade(entity.getLetterGrade());
+        dto.setMinScore(entity.getMinScore());
+        dto.setMaxScore(entity.getMaxScore());
+        dto.setGradePoint(entity.getGradePoint());
+        dto.setDescription(entity.getDescription());
+        return dto;
     }
 }

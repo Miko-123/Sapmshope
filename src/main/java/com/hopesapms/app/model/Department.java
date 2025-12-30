@@ -4,12 +4,19 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import com.fasterxml.jackson.annotation.JsonIdentityInfo;
+import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 
 import java.time.LocalDateTime;
 import java.util.Set;
 
 @Entity
 @Table(name = "department")
+@JsonIdentityInfo(
+    generator = ObjectIdGenerators.PropertyGenerator.class, 
+    property = "id", 
+    scope = Department.class 
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -34,6 +41,9 @@ public class Department {
 
     @Column(name = "office_location", length = 255)
     private String officeLocation;
+
+    @Column(name = "description")
+    private String description;
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "department_head_id", referencedColumnName = "id")

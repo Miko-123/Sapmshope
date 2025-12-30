@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.context.ApplicationEventPublisher;
+import com.hopesapms.app.event.AppEvents;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -33,6 +35,7 @@ public class ScoreService {
         private final StudentRepository studentRepository;
         private final AuditLogService auditLogService;
         private final AcademicSemesterService semesterService;
+        private final ApplicationEventPublisher eventPublisher;
 
         @Transactional
         public ScoreResponseDTO enterScore(ScoreRequestDTO dto, Authentication authentication) {
@@ -92,6 +95,13 @@ public class ScoreService {
                 score.setRecordedDate(LocalDateTime.now());
 
                 Score savedScore = scoreRepository.save(score);
+
+                User studentUser = savedScore.getEnrollment().getStudent().getUser();
+                eventPublisher.publishEvent(new AppEvents.GradePostedEvent(
+                                this, studentUser,
+                                savedScore.getEnrollment().getCourseOffering().getCourse().getTitle(),
+                                savedScore.getAssessment().getName(), savedScore.getScoreValue().doubleValue()));
+
                 auditLogService.log(action, "Score", savedScore.getId().longValue(), oldData, savedScore.toString());
 
                 return mapToResponseDTO(savedScore);

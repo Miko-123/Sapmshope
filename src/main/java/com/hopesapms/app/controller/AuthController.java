@@ -2,6 +2,7 @@ package com.hopesapms.app.controller;
 
 import com.hopesapms.app.service.AuthService;
 import com.hopesapms.app.service.EmailService;
+import com.hopesapms.app.service.LoginLogService;
 import com.hopesapms.app.service.OtpService;
 import com.hopesapms.app.service.PasswordResetService;
 import com.hopesapms.app.service.UserService;
@@ -19,12 +20,14 @@ import com.hopesapms.app.dto.CompleteProfileRequest;
 import com.hopesapms.app.dto.ForgotPasswordRequest;
 import com.hopesapms.app.repository.UserRepository;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
 
 @RestController
@@ -38,6 +41,7 @@ public class AuthController {
     private final VerificationService verificationService;
     private final EmailService emailService;
     private final UserService userService;
+    private final LoginLogService loginLogService;
 
     @Autowired
     private PasswordResetService passwordResetService;
@@ -118,9 +122,30 @@ public class AuthController {
         return ResponseEntity.ok(jwtResponse);
     }
 
-    @PostMapping("/login")
-    public ResponseEntity<?> loginUser(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+   @PostMapping("/login")
+    public ResponseEntity<?> loginUser(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+
+        String ipAddress = httpRequest.getRemoteAddr();
+        String userAgent = httpRequest.getHeader("User-Agent");
+        String email = request.getEmail();
+
+        try {
+
+            JwtResponse response = authService.login(request);
+
+            loginLogService.logLogin(email, true, ipAddress, userAgent, null);
+
+            return ResponseEntity.ok(response);
+
+        } catch (BadCredentialsException e) {
+
+            loginLogService.logLogin(email, false, ipAddress, userAgent, "Invalid Credentials");
+            throw e; 
+        } catch (Exception e) {
+
+            loginLogService.logLogin(email, false, ipAddress, userAgent, e.getMessage());
+            throw e;
+        }
     }
 
     @PostMapping("/forgot-password")
