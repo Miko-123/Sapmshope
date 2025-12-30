@@ -17,7 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/admin/login-history")
+@RequestMapping("/api/admin")
 @RequiredArgsConstructor
 public class SystemAdminController {
 
@@ -26,7 +26,7 @@ public class SystemAdminController {
     private final SystemSettingsService systemSettingsService;
     private final NotificationService notificationService;
 
-    @PostMapping("/maintenance/toggle")
+    @PostMapping("/login-history/maintenance/toggle")
     @PreAuthorize("hasAuthority('SYSTEM_ADMIN')")
     public ResponseEntity<MessageResponseDTO> toggleMaintenance(@RequestParam boolean enable) {
         systemSettingsService.setMaintenanceMode(enable);
@@ -34,21 +34,21 @@ public class SystemAdminController {
         return ResponseEntity.ok(new MessageResponseDTO("Maintenance mode is now " + status));
     }
 
-    @GetMapping("/maintenance/status")
+    @GetMapping("/login-history/maintenance/status")
     public ResponseEntity<Boolean> getMaintenanceStatus() {
         return ResponseEntity.ok(systemSettingsService.isMaintenanceMode());
     }
 
-    @PostMapping("/broadcast")
+    @PostMapping("/login-history/broadcast")
     @PreAuthorize("hasAuthority('SYSTEM_ADMIN')")
     public ResponseEntity<MessageResponseDTO> sendBroadcast(
-            @RequestParam String title, 
+            @RequestParam String title,
             @RequestParam String message) {
         notificationService.sendBroadcast(title, message);
         return ResponseEntity.ok(new MessageResponseDTO("Broadcast sent to all active users."));
     }
 
-    @GetMapping
+    @GetMapping("/login-history")
     @PreAuthorize("hasAuthority('SYSTEM_ADMIN')")
     public ResponseEntity<Page<LoginLog>> getLoginHistory(
             @RequestParam(defaultValue = "0") int page,

@@ -9,7 +9,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -19,7 +18,6 @@ import java.util.stream.Collectors;
 public class SystemAdminService {
 
     private final UserRepository userRepository;
-    private final LoginLogRepository loginLogRepository;
     private final AuditLogRepository auditLogRepository;
     private final StudentRepository studentRepository;
     private final InstructorRepository instructorRepository;
@@ -27,16 +25,19 @@ public class SystemAdminService {
     @Transactional(readOnly = true)
     public AdminDashboardStatsDTO getDashboardStats() {
 
-        long totalUsers = userRepository.countActiveUsersWithRoles();
-        long totalStudents = studentRepository.countByIsDeletedFalse();
+    
+        long totalUsers = userRepository.countActiveUsersWithRoles(); 
+        long totalStudents = studentRepository.count();
         long totalInstructors = instructorRepository.count();
 
-        long recentAlerts = 5;
+        long activeUsersNow = 5; 
+        long recentAlerts = 0;  
 
         Map<String, Long> distribution = new HashMap<>();
         distribution.put("Students", totalStudents);
         distribution.put("Instructors", totalInstructors);
-        distribution.put("Admins", totalUsers - (totalStudents + totalInstructors));
+        long others = totalUsers - (totalStudents + totalInstructors);
+        distribution.put("Admins/Staff", others > 0 ? others : 0);
 
         var recentLogs = auditLogRepository.findAll(
                 PageRequest.of(0, 5, Sort.by(Sort.Direction.DESC, "timestamp"))).stream().map(log -> {
@@ -52,7 +53,7 @@ public class SystemAdminService {
                 .totalUsers(totalUsers)
                 .totalStudents(totalStudents)
                 .totalInstructors(totalInstructors)
-                .activeUsersNow(12)
+                .activeUsersNow(activeUsersNow)
                 .recentSecurityAlerts(recentAlerts)
                 .userRoleDistribution(distribution)
                 .recentAuditLogs(recentLogs)
