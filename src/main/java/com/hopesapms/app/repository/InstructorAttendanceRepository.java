@@ -1,6 +1,10 @@
 package com.hopesapms.app.repository;
 
+import com.hopesapms.app.model.ClassSession;
 import com.hopesapms.app.model.InstructorAttendance;
+
+import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,4 +21,6 @@ public interface InstructorAttendanceRepository extends JpaRepository<Instructor
 
     @Query("SELECT ia FROM InstructorAttendance ia JOIN FETCH ia.classSession WHERE ia.classSession.id = :classSessionId AND ia.isDeleted = false")
     InstructorAttendance findByClassSessionId(Integer classSessionId);
+
+
 }

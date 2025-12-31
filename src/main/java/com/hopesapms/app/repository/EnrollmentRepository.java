@@ -1,5 +1,6 @@
 package com.hopesapms.app.repository;
 
+import com.hopesapms.app.dto.DepartmentSemesterGpaRawDto;
 import com.hopesapms.app.model.CourseOffering;
 import com.hopesapms.app.model.Enrollment;
 import com.hopesapms.app.model.Student;
@@ -65,4 +66,37 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Integer>
        long countByCourseOffering_AcademicSemester_IdAndStatus(Long semesterId, String status);
 
        long countByCourseOffering_AcademicSemester_IdAndFinalGradeIsNull(Long semesterId);
+
+@Query("""
+    SELECT new com.hopesapms.app.dto.DepartmentSemesterGpaRawDto(
+        sem.name,
+        d.name,
+        SUM(
+            CASE e.finalGrade
+                WHEN 'A+' THEN 4.0
+                WHEN 'A'  THEN 4.0
+                WHEN 'A-' THEN 3.7
+                WHEN 'B+' THEN 3.3
+                WHEN 'B'  THEN 3.0
+                WHEN 'B-' THEN 2.7
+                WHEN 'C+' THEN 2.3
+                WHEN 'C'  THEN 2.0
+                WHEN 'C-' THEN 1.7
+                WHEN 'D'  THEN 1.0
+                ELSE 0.0
+            END * co.course.credits
+        ) / SUM(co.course.credits),
+        COUNT(DISTINCT s.id)
+    )
+    FROM Enrollment e
+    JOIN e.student s
+    JOIN s.department d
+    JOIN e.courseOffering co
+    JOIN co.academicSemester sem
+    WHERE e.finalGrade IS NOT NULL
+      AND s.status = 'ACTIVE'
+    GROUP BY sem.year, sem.name, d.name, sem.startDate
+    ORDER BY sem.year ASC, sem.startDate ASC, d.name ASC 
+""")
+List<DepartmentSemesterGpaRawDto> findDepartmentPerformanceStats();
 }

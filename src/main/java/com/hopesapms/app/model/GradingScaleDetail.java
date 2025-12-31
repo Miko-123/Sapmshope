@@ -22,7 +22,7 @@ public class GradingScaleDetail {
     private GradingScale gradingScale;
 
     @Column(length = 10, nullable = false)
-    private String grade;  // e.g., "A"
+    private String grade;
 
     @Column(name = "min_percentage", precision = 5, scale = 2, nullable = false)
     private BigDecimal minPercentage;

@@ -3,11 +3,15 @@ package com.hopesapms.app.controller;
 import com.hopesapms.app.dto.AssignStaffRequestDTO;
 import com.hopesapms.app.dto.UserResponseDTO;
 import com.hopesapms.app.dto.CreateDepartmentRequest;
+import com.hopesapms.app.dto.DepartmentGpaDto;
+import com.hopesapms.app.dto.DepartmentPerformanceDto;
 import com.hopesapms.app.dto.DepartmentResponseDTO;
+import com.hopesapms.app.dto.DepartmentSemesterGpaRawDto;
 import com.hopesapms.app.dto.ProgramResponseDTO;
 import com.hopesapms.app.dto.UpdateDepartmentDetailsRequest;
 import com.hopesapms.app.service.DepartmentService;
 import com.hopesapms.app.service.ProgramService;
+import com.hopesapms.app.service.ScoreService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,6 +34,7 @@ public class DepartmentController {
 
     private final DepartmentService departmentService;
     private final ProgramService programService;
+    private final ScoreService scoreService;
 
     @PostMapping("/create")
     @PreAuthorize("hasAuthority('SYSTEM_ADMIN')")
@@ -124,5 +129,18 @@ public class DepartmentController {
 
         UserResponseDTO assignedUser = departmentService.assignStaffToDepartment(departmentId, dto, authentication);
         return ResponseEntity.ok(assignedUser);
+    }
+
+    @GetMapping("/average-gpa")
+    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'VICE_PRESIDENT')")
+    public ResponseEntity<List<DepartmentGpaDto>> getAverageGpa() {
+        List<DepartmentGpaDto> gpas = scoreService.getAverageGpaPerDepartment();
+        return ResponseEntity.ok(gpas);
+    }
+
+    @GetMapping("/department-performance")
+    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'VICE_PRESIDENT')")
+    public List<DepartmentPerformanceDto> getDepartmentPerformance() {
+        return scoreService.getDepartmentPerformance();
     }
 }

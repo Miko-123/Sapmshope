@@ -15,7 +15,7 @@ public class AssessmentRequestDTO {
     @NotNull(message = "Course Offering ID is required")
     private Long courseOfferingId;
 
-    private Integer courseId; 
+    // private Integer courseId; 
 
     @NotBlank(message = "Assessment name is required")
     private String name; 

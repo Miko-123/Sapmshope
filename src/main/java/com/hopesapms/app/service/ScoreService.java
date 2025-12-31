@@ -2,6 +2,9 @@ package com.hopesapms.app.service;
 
 import com.hopesapms.app.dto.BulkScoreRequestDTO;
 import com.hopesapms.app.dto.BulkUploadResponse;
+import com.hopesapms.app.dto.DepartmentGpaDto;
+import com.hopesapms.app.dto.DepartmentPerformanceDto;
+import com.hopesapms.app.dto.DepartmentSemesterGpaRawDto;
 import com.hopesapms.app.dto.ScoreRequestDTO;
 import com.hopesapms.app.dto.ScoreResponseDTO;
 import com.hopesapms.app.dto.StudentScoreDTO;
@@ -18,7 +21,9 @@ import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -175,6 +180,67 @@ public class ScoreService {
                 return scores.stream()
                                 .map(this::mapToStudentScoreDTO)
                                 .collect(Collectors.toList());
+        }
+
+        public List<DepartmentGpaDto> getAverageGpaPerDepartment() {
+                return scoreRepository.findWeightedAverageGpaPerDepartment();
+        }
+
+        public List<DepartmentSemesterGpaRawDto> getDepartmentSemesterGpa() {
+                return enrollmentRepository.findDepartmentPerformanceStats();
+        }
+
+        public List<DepartmentPerformanceDto> getDepartmentPerformance() {
+
+                List<DepartmentSemesterGpaRawDto> raw = enrollmentRepository.findDepartmentPerformanceStats();
+
+                // Group by department
+                Map<String, List<DepartmentSemesterGpaRawDto>> byDept = raw.stream()
+                                .collect(Collectors.groupingBy(DepartmentSemesterGpaRawDto::getDepartment));
+
+                List<DepartmentPerformanceDto> result = new ArrayList<>();
+
+                for (var entry : byDept.entrySet()) {
+                        String department = entry.getKey();
+                        List<DepartmentSemesterGpaRawDto> records = entry.getValue();
+
+                        // Sort by semester order (already ordered, but safe)
+                        records.sort(Comparator.comparing(DepartmentSemesterGpaRawDto::getSemester));
+
+                        for (int i = 0; i < records.size(); i++) {
+                                DepartmentSemesterGpaRawDto current = records.get(i);
+                                Double previousGpa = (i == 0) ? null : records.get(i - 1).getGpa();
+                                Double change = (previousGpa == null)
+                                                ? null
+                                                : round(current.getGpa() - previousGpa);
+
+                                result.add(new DepartmentPerformanceDto(
+                                                department,
+                                                current.getSemester(),
+                                                round(current.getGpa()),
+                                                current.getEnrolledStudents(),
+                                                change,
+                                                determineStatus(change)));
+                        }
+                }
+
+                return result;
+        }
+
+        private Double round(Double value) {
+                return value == null ? null : Math.round(value * 100.0) / 100.0;
+        }
+
+        private String determineStatus(Double change) {
+                if (change == null)
+                        return "N/A";
+                if (change >= 0.30)
+                        return "Excellent";
+                if (change >= 0.10)
+                        return "Good";
+                if (change >= -0.3)
+                        return "Needs Attention";
+                return "Bad";
         }
 
         private StudentScoreDTO mapToStudentScoreDTO(Score s) {

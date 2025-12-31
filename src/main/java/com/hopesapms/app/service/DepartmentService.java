@@ -3,12 +3,14 @@ package com.hopesapms.app.service;
 import com.hopesapms.app.dto.AssignStaffRequestDTO;
 import com.hopesapms.app.dto.CreateDepartmentRequest;
 import com.hopesapms.app.dto.DepartmentResponseDTO;
+import com.hopesapms.app.dto.DepartmentSemesterGpaRawDto;
 import com.hopesapms.app.dto.UpdateDepartmentDetailsRequest;
 import com.hopesapms.app.dto.UserResponseDTO;
 import com.hopesapms.app.exception.ResourceNotFoundException;
 import com.hopesapms.app.model.Department;
 import com.hopesapms.app.model.User;
 import com.hopesapms.app.repository.DepartmentRepository;
+import com.hopesapms.app.repository.EnrollmentRepository;
 import com.hopesapms.app.repository.UserRepository;
 import jakarta.persistence.EntityExistsException;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +31,7 @@ public class DepartmentService {
     private final DepartmentRepository departmentRepository;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
-
+    private final EnrollmentRepository enrollmentRepository;
     @Transactional
     public DepartmentResponseDTO createDepartment(CreateDepartmentRequest dto) {
         if (departmentRepository.existsByNameAndIsDeletedFalse(dto.getName())) {
@@ -210,7 +212,10 @@ public class DepartmentService {
                 .map(this::mapToUserResponseDTO)
                 .collect(Collectors.toList());
     }
-
+    
+    public List<DepartmentSemesterGpaRawDto> getDepartmentSemesterGpa() {
+        return enrollmentRepository.findDepartmentPerformanceStats();
+    }
     // --- HELPER METHODS ---
 
     private UserResponseDTO mapToUserResponseDTO(User user) {
