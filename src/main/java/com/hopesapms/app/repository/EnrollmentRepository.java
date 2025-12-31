@@ -13,12 +13,12 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
 public interface EnrollmentRepository extends JpaRepository<Enrollment, Integer> {
 
-       // For getting a student's own enrollments (fetches all related data)
        @Query("SELECT e FROM Enrollment e " +
                      "JOIN FETCH e.student s " +
                      "JOIN FETCH e.courseOffering co " +
@@ -30,13 +30,18 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Integer>
                      "WHERE s.id = :studentId")
        Page<Enrollment> findByStudentId(@Param("studentId") Integer studentId, Pageable pageable);
 
-       // For the EnrollmentService (checks for duplicates)
+       @Query("SELECT e.finalGrade as label, COUNT(e) as value " +
+                     "FROM Enrollment e " +
+                     "WHERE e.courseOffering.course.department.id = :deptId " +
+                     "AND e.finalGrade IS NOT NULL " +
+                     "GROUP BY e.finalGrade")
+       List<Map<String, Object>> findGradeDistributionByDepartment(@Param("deptId") Long deptId);
+
        @Query("SELECT e FROM Enrollment e WHERE e.student.id = :studentId AND e.courseOffering.id = :offeringId")
        Optional<Enrollment> findByStudentAndCourseOffering(
                      @Param("studentId") Integer studentId,
                      @Param("offeringId") Long offeringId);
 
-       // For the EnrollmentService & PerformanceService (checks course history)
        @Query("SELECT e FROM Enrollment e " +
                      "JOIN FETCH e.courseOffering co " +
                      "JOIN FETCH co.academicSemester " +
@@ -52,6 +57,12 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Integer>
                      "JOIN FETCH s.user " +
                      "WHERE e.courseOffering.id = :offeringId")
        List<Enrollment> findByCourseOfferingId(@Param("offeringId") Long offeringId);
+
+       @Query("SELECT e.courseOffering.academicSemester.name as label, COUNT(e) as value " +
+                     "FROM Enrollment e " +
+                     "GROUP BY e.courseOffering.academicSemester.name " +
+                     "ORDER BY e.courseOffering.academicSemester.startDate ASC")
+       List<Map<String, Object>> findEnrollmentTrends();
 
        boolean existsByStudentAndCourseOffering(Student student, CourseOffering courseOffering);
 

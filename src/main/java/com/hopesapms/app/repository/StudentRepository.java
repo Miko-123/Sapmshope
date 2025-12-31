@@ -81,6 +81,19 @@ public interface StudentRepository extends JpaRepository<Student, Integer> {
 
         Optional<Student> findByUser_Id(Integer id);
 
+        @Query("SELECT COUNT(s) FROM Student s WHERE s.program.department.id = :deptId AND s.isDeleted = false")
+        long countByDepartmentId(@Param("deptId") Long deptId);
+
+        @Query("SELECT COUNT(s) FROM Student s WHERE s.program.department.id = :deptId AND s.yearLevel = :yearLevel AND s.isDeleted = false")
+        long countByDepartmentIdAndYearLevel(@Param("deptId") Long deptId, @Param("yearLevel") int yearLevel);
+
+        @Query("SELECT s FROM Student s JOIN s.user u WHERE " +
+                        "(LOWER(u.firstName) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+                        "LOWER(s.studentId) LIKE LOWER(CONCAT('%', :query, '%'))) " +
+                        "AND s.department.id = :deptId AND s.isDeleted = false")
+        Page<Student> searchStudentsByDepartment(@Param("query") String query, @Param("deptId") Long deptId,
+                        Pageable pageable);
+
         @Query("SELECT s FROM Section s WHERE LOWER(s.name) = LOWER(?1) AND s.program.id = ?2 AND s.yearLevel = ?3 AND s.isDeleted = false")
     Optional<Section> findByNameIgnoreCaseAndProgramIdAndYearLevelAndIsDeletedFalse(String name, Long programId, Integer yearLevel);
 

@@ -7,6 +7,8 @@ import com.hopesapms.app.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
+import com.hopesapms.app.event.AppEvents;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -24,6 +26,7 @@ public class AttendanceService {
     private final CourseOfferingRepository courseOfferingRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final StudentRepository studentRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(readOnly = true)
     public AttendanceSheetDTO getSheet(Long offeringId, LocalDate date) {
@@ -50,7 +53,8 @@ public class AttendanceService {
             Student s = e.getStudent();
             AttendanceSheetDTO.StudentStatusDTO row = new AttendanceSheetDTO.StudentStatusDTO();
             row.setStudentId(s.getId());
-            row.setStudentName(s.getUser().getFirstName() + " " + s.getUser().getLastName());
+            row.setStudentName(
+                    s.getUser().getFirstName() + " " + s.getUser().getMiddleName() + " " + s.getUser().getLastName());
             row.setStudentIdString(s.getStudentId());
 
             if (attendanceMap.containsKey(s.getId())) {
@@ -104,6 +108,55 @@ public class AttendanceService {
             attendance.setStatus(entry.getStatus());
             attendance.setRemarks(entry.getRemarks());
             attendanceRepository.save(attendance);
+
+            if ("ABSENT".equals(entry.getStatus())) {
+                checkAndApplyNGStatus(student, offering);
+                checkAndNotifyAtRisk(student, offering);
+            }
+        }
+    }
+
+    private void checkAndNotifyAtRisk(Student student, CourseOffering offering) {
+        List<Attendance> records = attendanceRepository.findByStudentAndCourse(student.getId(), offering.getId());
+        long total = records.size();
+        long present = records.stream().filter(a -> "PRESENT".equals(a.getStatus())).count();
+
+        if (total > 0) {
+            double rate = (double) present / total * 100.0;
+            if (rate < 80.0) {
+                eventPublisher.publishEvent(new AppEvents.LowAttendanceEvent(
+                        this,
+                        student.getUser(),
+                        offering.getCourse().getTitle(),
+                        rate));
+            }
+        }
+    }
+
+    private void checkAndApplyNGStatus(Student student, CourseOffering offering) {
+        List<Attendance> records = attendanceRepository.findByStudentAndCourse(student.getId(), offering.getId());
+
+        long totalSessions = records.size();
+        long absentSessions = records.stream()
+                .filter(a -> "ABSENT".equals(a.getStatus()))
+                .count();
+
+        if (totalSessions > 0) {
+            double absencePercentage = (double) absentSessions / totalSessions * 100.0;
+
+            if (absencePercentage >= 25.0) {
+                Enrollment enrollment = enrollmentRepository
+                        .findByStudentAndCourseOffering(student.getId(), offering.getId())
+                        .orElse(null);
+
+                if (enrollment != null && !"NG".equals(enrollment.getFinalGrade())) {
+                    enrollment.setFinalGrade("NG");
+                    enrollmentRepository.save(enrollment);
+
+                    System.out.println("System Auto-NG: Student " + student.getStudentId() +
+                            " hit " + absencePercentage + "% absence.");
+                }
+            }
         }
     }
 }

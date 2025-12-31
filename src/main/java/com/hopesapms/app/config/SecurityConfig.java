@@ -23,6 +23,7 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
+import com.hopesapms.app.security.MaintenanceFilter;
 
 import java.util.Arrays;
 import java.util.List;
@@ -35,6 +36,7 @@ public class SecurityConfig {
 
         private final JwtAuthenticationFilter jwtAuthenticationFilter;
         private final JwtAuthEntryPoint jwtAuthEntryPoint;
+        private final MaintenanceFilter maintenanceFilter;
 
         @Bean
         public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -66,7 +68,8 @@ public class SecurityConfig {
                                                 .authenticated()
                                                 .requestMatchers("/api/admin/**").hasAnyAuthority("SYSTEM_ADMIN")
                                                 .anyRequest().authenticated())
-                                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                                .addFilterAfter(maintenanceFilter, JwtAuthenticationFilter.class);
 
                 return http.build();
         }

@@ -26,7 +26,7 @@ public class AssessmentController {
     private final AssessmentService assessmentService;
 
     @PostMapping
-    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'INSTRUCTOR')")
+    @PreAuthorize("hasAnyAuthority('DEPARTMENT_HEAD', 'INSTRUCTOR')")
     @Operation(summary = "Create a new assessment for a course offering")
     public ResponseEntity<AssessmentResponseDTO> createAssessment(
             @Valid @RequestBody AssessmentRequestDTO dto, Authentication authentication) {
@@ -36,10 +36,12 @@ public class AssessmentController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'INSTRUCTOR')")
+    @PreAuthorize("hasAnyAuthority('DEPARTMENT_HEAD', 'INSTRUCTOR')")
     @Operation(summary = "Update an existing assessment")
     public ResponseEntity<AssessmentResponseDTO> updateAssessment(
-            @PathVariable Integer id, @Valid @RequestBody AssessmentRequestDTO dto, Authentication authentication) {
+            @PathVariable Long id, 
+            @Valid @RequestBody AssessmentRequestDTO dto, 
+            Authentication authentication) {
 
         AssessmentResponseDTO updated = assessmentService.updateAssessment(id, dto, authentication);
         return ResponseEntity.ok(updated);
@@ -56,9 +58,12 @@ public class AssessmentController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'INSTRUCTOR')")
+    @PreAuthorize("hasAnyAuthority('DEPARTMENT_HEAD', 'INSTRUCTOR')")
     @Operation(summary = "Soft-delete an assessment")
-    public ResponseEntity<Void> deleteAssessment(@PathVariable Integer id, Authentication authentication) {
+    public ResponseEntity<Void> deleteAssessment(
+            @PathVariable Long id, 
+            Authentication authentication) {
+        
         assessmentService.deleteAssessment(id, authentication);
         return ResponseEntity.noContent().build();
     }

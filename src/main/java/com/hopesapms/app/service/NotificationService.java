@@ -5,6 +5,10 @@ import com.hopesapms.app.model.User;
 import com.hopesapms.app.repository.NotificationRepository;
 import com.hopesapms.app.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -30,6 +34,23 @@ public class NotificationService {
                     .build();
             notificationRepository.save(n);
         }
+    }
+
+    @Transactional
+    public void sendBroadcast(String title, String message) {
+        List<User> users = userRepository.findAll().stream()
+                .filter(u -> !u.isDeleted())
+                .collect(Collectors.toList());
+
+        List<Notification> notifications = users.stream().map(user -> Notification.builder()
+                .user(user)
+                .title(title)
+                .message(message)
+                .type("SYSTEM_ANNOUNCEMENT")
+                .isRead(false)
+                .build()).collect(Collectors.toList());
+
+        notificationRepository.saveAll(notifications);
     }
 
     @Transactional(readOnly = true)

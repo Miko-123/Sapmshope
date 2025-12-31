@@ -1,25 +1,35 @@
 package com.hopesapms.app.service;
 
 import com.hopesapms.app.dto.AssignStaffRequestDTO;
+import com.hopesapms.app.dto.AuditLogResponse;
 import com.hopesapms.app.dto.CreateDepartmentRequest;
 import com.hopesapms.app.dto.DepartmentResponseDTO;
+import com.hopesapms.app.dto.DeptCourseDTO;
+import com.hopesapms.app.dto.DpHdDashboardStatsDTO;
 import com.hopesapms.app.dto.DepartmentSemesterGpaRawDto;
 import com.hopesapms.app.dto.UpdateDepartmentDetailsRequest;
 import com.hopesapms.app.dto.UserResponseDTO;
 import com.hopesapms.app.exception.ResourceNotFoundException;
 import com.hopesapms.app.model.Department;
 import com.hopesapms.app.model.User;
-import com.hopesapms.app.repository.DepartmentRepository;
+import com.hopesapms.app.repository.*;
 import com.hopesapms.app.repository.EnrollmentRepository;
-import com.hopesapms.app.repository.UserRepository;
 import jakarta.persistence.EntityExistsException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.hopesapms.app.model.AuditLog;
+import com.hopesapms.app.dto.AuditLogResponse;
+
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -28,10 +38,14 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DepartmentService {
 
+    private final StudentRepository studentRepository;
     private final DepartmentRepository departmentRepository;
     private final UserRepository userRepository;
-    private final AuditLogService auditLogService;
+    private final CourseOfferingRepository courseOfferingRepository;
     private final EnrollmentRepository enrollmentRepository;
+    private final InstructorRepository instructorRepository;
+    private final AuditLogService auditLogService;
+    private final AuditLogRepository auditLogRepository;
     @Transactional
     public DepartmentResponseDTO createDepartment(CreateDepartmentRequest dto) {
         if (departmentRepository.existsByNameAndIsDeletedFalse(dto.getName())) {
@@ -42,6 +56,20 @@ public class DepartmentService {
         Department savedDept = departmentRepository.save(department);
         auditLogService.log("CREATE_DEPARTMENT", "Department", savedDept.getId(), null, savedDept.toString());
         return mapEntityToDto(savedDept);
+    }
+
+    @Transactional
+    public DepartmentResponseDTO getMyDepartment(Authentication authentication) {
+
+        String email = authentication.getName();
+        User user = userRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Logged in user is not found"));
+
+        if (user.getDepartment() == null) {
+            throw new ResourceNotFoundException("You are not assigned to any department");
+        }
+
+        return mapEntityToDto(user.getDepartment());
     }
 
     @Transactional
@@ -65,6 +93,7 @@ public class DepartmentService {
         department.setContactEmail(dto.getContactEmail());
         department.setContactPhone(dto.getContactPhone());
         department.setOfficeLocation(dto.getOfficeLocation());
+        department.setDescription(dto.getDescription());
         Department updatedDept = departmentRepository.save(department);
 
         auditLogService.log("UPDATE_DEPT_DETAILS", "Department", updatedDept.getId(), oldData, updatedDept.toString());
@@ -76,6 +105,39 @@ public class DepartmentService {
         return departmentRepository.findByIsDeletedFalse()
                 .stream()
                 .map(this::mapEntityToDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<DeptCourseDTO> getCoursesForDeptHead(Authentication authentication) {
+
+        String email = authentication.getName();
+        User user = userRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (user.getDepartment() == null) {
+            throw new IllegalStateException("You are not assigned to any department.");
+        }
+
+        Long deptId = user.getDepartment().getId();
+
+        return courseOfferingRepository.findByCourse_Department_IdAndAcademicSemester_IsCurrentTrue(deptId)
+                .stream()
+                .map(offering -> {
+                    long count = enrollmentRepository.countByCourseOffering(offering);
+
+                    return DeptCourseDTO.builder()
+                            .offeringId(offering.getId())
+                            .courseName(offering.getCourse().getTitle())
+                            .courseCode(offering.getCourse().getCourseCode())
+                            .sectionName(offering.getSection().getName())
+                            .instructorName(offering.getInstructor().getUser().getFirstName() + " "
+                                    + offering.getInstructor().getUser().getMiddleName() + " "
+                                    + offering.getInstructor().getUser().getLastName())
+                            .semesterName(offering.getAcademicSemester().getName())
+                            .studentCount(count)
+                            .build();
+                })
                 .collect(Collectors.toList());
     }
 
@@ -106,7 +168,6 @@ public class DepartmentService {
                 .collect(Collectors.toList());
     }
 
-
     @Transactional(readOnly = true)
     public List<UserResponseDTO> getUnassignedInstructors() {
         return userRepository.findUnassignedByRole("INSTRUCTOR")
@@ -125,12 +186,10 @@ public class DepartmentService {
         User loggedInUser = userRepository.findByEmailAndIsDeletedFalse(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("Logged-in user not found."));
 
-       
         boolean isSystemAdmin = loggedInUser.getRoles().stream()
                 .anyMatch(role -> "SYSTEM_ADMIN".equals(role.getName()));
 
         if (!isSystemAdmin) {
-            // This is your original authorization logic, now nested
             boolean isDeptHead = loggedInUser.getRoles().stream()
                     .anyMatch(r -> r.getName().equals("DEPARTMENT_HEAD"));
 
@@ -142,20 +201,16 @@ public class DepartmentService {
                 throw new AccessDeniedException("You are not the head of this department.");
             }
         }
-        // --- END OF MODIFICATION ---
 
-        // 5. Get the target user (the Instructor or Dept Head to be assigned)
         User staffToAssign = userRepository.findByIdAndIsDeletedFalse(dto.getUserId())
                 .orElseThrow(
                         () -> new ResourceNotFoundException("User to assign not found with id: " + dto.getUserId()));
 
-        // 6. Business Logic: Check if they are truly unassigned
         if (staffToAssign.getDepartment() != null) {
             throw new IllegalArgumentException(
                     "This user is already assigned to department: " + staffToAssign.getDepartment().getName());
         }
 
-        // 7. Assign and Save
         String oldData = staffToAssign.toString();
         staffToAssign.setDepartment(department);
         User savedStaff = userRepository.save(staffToAssign);
@@ -171,7 +226,7 @@ public class DepartmentService {
         Department department = departmentRepository.findByIdAndIsDeletedFalse(departmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Department not found"));
 
-        User staffToAssign = userRepository.findByIdAndIsDeletedFalse(userId.intValue()) 
+        User staffToAssign = userRepository.findByIdAndIsDeletedFalse(userId.intValue())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
         boolean isDeptHeadRole = staffToAssign.getRoles().stream()
@@ -180,29 +235,63 @@ public class DepartmentService {
             throw new IllegalArgumentException("User must have DEPARTMENT_HEAD role to be assigned as head.");
         }
 
-    
         if (staffToAssign.getDepartment() != null && !staffToAssign.getDepartment().getId().equals(departmentId)) {
             throw new IllegalArgumentException("This user is already assigned to a different department: "
                     + staffToAssign.getDepartment().getName());
         }
 
-    
         String oldDeptData = department.toString();
         String oldUserData = staffToAssign.toString();
 
-        staffToAssign.setDepartment(department); 
-        
+        staffToAssign.setDepartment(department);
+
         department.setDepartmentHead(staffToAssign);
 
-       
-        User savedStaff = userRepository.save(staffToAssign); 
+        User savedStaff = userRepository.save(staffToAssign);
         Department updatedDept = departmentRepository.save(department);
         auditLogService.log("ASSIGN_STAFF", "User", savedStaff.getId().longValue(), oldUserData, savedStaff.toString());
         auditLogService.log("ASSIGN_DEPARTMENT_HEAD", "Department", updatedDept.getId(),
                 oldDeptData, updatedDept.toString());
 
         return mapToUserResponseDTO(savedStaff);
-        
+
+    }
+
+    public DpHdDashboardStatsDTO getDashboardStats(Authentication authentication) {
+        User user = userRepository.findByEmailAndIsDeletedFalse(authentication.getName())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        Department department = user.getDepartment();
+        if (department == null)
+            throw new AccessDeniedException("User has no department");
+
+        DpHdDashboardStatsDTO statsDTO = new DpHdDashboardStatsDTO();
+
+        statsDTO.setTotalStudents(studentRepository.countByDepartmentId(department.getId()));
+        statsDTO.setTotalInstructors(instructorRepository.countByDepartmentId(department.getId()));
+        statsDTO.setActiveCourses(courseOfferingRepository.countByDepartmentIdAndStatus(department.getId(), "ACTIVE"));
+        statsDTO.setAvgDepartmentGpa(3.12);
+
+        statsDTO.setEnrollmentByYear(Map.of(
+                "Year 1", studentRepository.countByDepartmentIdAndYearLevel(department.getId(), 1),
+                "Year 2", studentRepository.countByDepartmentIdAndYearLevel(department.getId(), 2),
+                "Year 3", studentRepository.countByDepartmentIdAndYearLevel(department.getId(), 3),
+                "Year 4", studentRepository.countByDepartmentIdAndYearLevel(department.getId(), 4)));
+
+        statsDTO.setCourseStatusDistribution(Map.of(
+                "Active", courseOfferingRepository.countByDepartmentIdAndStatus(department.getId(), "ACTIVE"),
+                "Planned", courseOfferingRepository.countByDepartmentIdAndStatus(department.getId(), "PLANNED"),
+                "Completed", courseOfferingRepository.countByDepartmentIdAndStatus(department.getId(), "COMPLETED")));
+
+        Pageable top5 = PageRequest.of(0, 5, Sort.by(Sort.Direction.DESC, "timestamp"));
+
+        List<AuditLogResponse> logs = auditLogRepository.findByUser_Username(user.getUsername(), top5)
+                .map(this::mapToAuditResponse) 
+                .getContent();
+        statsDTO.setRecentActivities(logs);
+
+        return statsDTO;
+
     }
 
     @Transactional(readOnly = true)
@@ -224,6 +313,7 @@ public class DepartmentService {
         dto.setUsername(user.getUsername());
         dto.setEmail(user.getEmail());
         dto.setFirstName(user.getFirstName());
+        dto.setMiddleName(user.getMiddleName());
         dto.setLastName(user.getLastName());
         dto.setDepartmentId(user.getDepartment() != null ? user.getDepartment().getId().intValue() : null);
 
@@ -248,13 +338,34 @@ public class DepartmentService {
         dto.setContactEmail(entity.getContactEmail());
         dto.setContactPhone(entity.getContactPhone());
         dto.setOfficeLocation(entity.getOfficeLocation());
-        if (entity.getDepartmentHead() != null){
+        if (entity.getDepartmentHead() != null) {
             User head = entity.getDepartmentHead();
             dto.setDepartmentHeadId(head.getId());
-            dto.setDepartmentHeadName(head.getFirstName() + " " + head.getMiddleName());
+            dto.setDepartmentHeadName(head.getFirstName() + " " + head.getMiddleName() + " " + head.getLastName());
         }
         dto.setCreatedAt(entity.getCreatedAt());
         dto.setUpdatedAt(entity.getUpdatedAt());
+        return dto;
+    }
+
+    private AuditLogResponse mapToAuditResponse(com.hopesapms.app.model.AuditLog log) {
+        AuditLogResponse dto = new AuditLogResponse();
+        dto.setId(log.getId());
+
+        if (log.getUser() != null) {
+            dto.setUsername(log.getUser().getUsername());
+        } else {
+            dto.setUsername("System/Unknown");
+        }
+
+        dto.setActionType(log.getActionType());
+        dto.setEntityType(log.getEntityType());
+        dto.setEntityId(log.getEntityId());
+        dto.setTimestamp(log.getTimestamp());
+        dto.setOldValue(log.getOldValue());
+        dto.setNewValue(log.getNewValue());
+        
+        
         return dto;
     }
 }

@@ -23,14 +23,14 @@ public class Section {
     private Integer id;
 
     @Column(length = 50, nullable = false)
-    private String name; // e.g. "Section 1"
+    private String name; 
 
     @Column(name = "year_level", nullable = false)
     private Integer yearLevel;
 
     @Column(name = "capacity")
-    private Integer capacity; // e.g., 30 (for 30 students)
-    // --- END ---
+    private Integer capacity; 
+   
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "program_id", nullable = false)

@@ -16,10 +16,16 @@ import java.util.List;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, Integer> {
+
     Optional<User> findByUsernameAndIsDeletedFalse(String username);
+
     Optional<User> findByEmailAndIsDeletedFalse(String email);
+
     boolean existsByUsernameAndIsDeletedFalse(String username);
+    
     boolean existsByEmailAndIsDeletedFalse(String email);
+
+    boolean existsByUsernameAndIsDeletedFalseAndIdNot(String username, Integer id);
 
     @EntityGraph(attributePaths = {"roles"})
     Page<User> findByIsDeletedFalse(Pageable pageable);
