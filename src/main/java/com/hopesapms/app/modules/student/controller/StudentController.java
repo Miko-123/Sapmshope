@@ -1,0 +1,197 @@
+package com.hopesapms.app.modules.student.controller;
+
+import com.hopesapms.app.modules.analytics.dto.AcademicHistoryDTO;
+import com.hopesapms.app.modules.academicsemester.dto.BatchPromoteRequest;
+import com.hopesapms.app.modules.student.dto.RegisterStudentRequest;
+import com.hopesapms.app.modules.student.dto.StudentCourseDTO;
+import com.hopesapms.app.modules.student.dto.StudentCourseDetailDTO;
+import com.hopesapms.app.modules.student.dto.StudentDashboardStatsDTO;
+import com.hopesapms.app.modules.student.dto.StudentResponse;
+import com.hopesapms.app.modules.student.dto.StudentScheduleDTO;
+import com.hopesapms.app.modules.student.dto.UpdateStudentRequest;
+import com.hopesapms.app.modules.user.dto.UserResponseDTO;
+import com.hopesapms.app.modules.enrollment.model.Enrollment;
+import com.hopesapms.app.modules.student.model.Student;
+import com.hopesapms.app.modules.enrollment.repository.EnrollmentRepository;
+import com.hopesapms.app.modules.student.repository.StudentRepository;
+import com.hopesapms.app.modules.enrollment.service.ExcelImportService;
+import com.hopesapms.app.modules.report.service.ReportService;
+import com.hopesapms.app.modules.student.service.StudentService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
+import java.io.IOException;
+import java.net.URI;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/students")
+@RequiredArgsConstructor
+public class StudentController {
+
+    private final StudentService studentService;
+    private final ExcelImportService excelImportService;
+    private final StudentRepository studentRepository;
+    private final EnrollmentRepository enrollmentRepository;
+    private final ReportService reportService;
+
+    @PostMapping("/register")
+    @PreAuthorize("hasAuthority('REGISTRAR')")
+    @Operation(summary = "Register new student", description = "Creates a new student record with pending user status")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Student registered successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid input data")
+    })
+    public ResponseEntity<StudentResponse> registerStudent(@Valid @RequestBody RegisterStudentRequest request) {
+        StudentResponse response = studentService.registerStudent(request);
+        URI location = ServletUriComponentsBuilder
+                .fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(response.getId())
+                .toUri();
+        return ResponseEntity.created(location).body(response);
+    }
+
+    @GetMapping("/courses")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    @Operation(summary = "Get my active enrolled courses")
+    public ResponseEntity<List<StudentCourseDTO>> getMyCourses(Authentication authentication) {
+        return ResponseEntity.ok(studentService.getMyActiveCourses(authentication));
+    }
+
+    @GetMapping("/courses/{enrollmentId}")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    @Operation(summary = "Get detailed grades and attendance for a course")
+    public ResponseEntity<StudentCourseDetailDTO> getCourseDetails(
+            @PathVariable Long enrollmentId,
+            Authentication authentication) {
+
+        return ResponseEntity.ok(studentService.getCourseDetails(enrollmentId, authentication));
+    }
+
+    @GetMapping("/history")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    @Operation(summary = "Get academic history grouped by semester", description = "Returns all enrolled courses grouped by semester (Active & Archived) with calculated GPA.")
+    public ResponseEntity<AcademicHistoryDTO> getAcademicHistory(Authentication authentication) {
+        return ResponseEntity.ok(studentService.getAcademicHistory(authentication));
+    }
+
+    @GetMapping("/schedule")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    public ResponseEntity<List<StudentScheduleDTO>> getMySchedule(Authentication authentication) {
+        return ResponseEntity.ok(studentService.getWeeklySchedule(authentication));
+    }
+
+    @GetMapping("/stats")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    @Operation(summary = "Get student GPA and credit stats")
+    public ResponseEntity<StudentDashboardStatsDTO> getDashboardStats(Authentication authentication) {
+        return ResponseEntity.ok(studentService.getDashboardStats(authentication));
+    }
+
+    @PostMapping(value = "/register/bulk", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('REGISTRAR')")
+    @Operation(summary = "Bulk register students", description = "Upload an Excel file to register multiple students at once.")
+    public ResponseEntity<Map<String, Object>> bulkRegisterStudents(
+            @Parameter(description = "Excel file", required = true) @RequestPart("file") MultipartFile file) {
+        return ResponseEntity.ok(excelImportService.importStudents(file));
+    }
+
+    @GetMapping("/transcript/download")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    public ResponseEntity<byte[]> downloadMyTranscript(Authentication authentication) throws IOException {
+
+        Student student = studentService.getStudentFromAuth(authentication);
+
+        List<Enrollment> enrollments = enrollmentRepository.findByStudent_Id(student.getId().longValue());
+
+        byte[] pdfBytes = reportService.generateStudentTranscript(student, enrollments);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=My_Transcript.pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdfBytes);
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('REGISTRAR')")
+    @Operation(summary = "Update student details", description = "Update profile, academic status, or assign a section.")
+    public ResponseEntity<StudentResponse> updateStudent(
+            @PathVariable Integer id,
+            @RequestBody UpdateStudentRequest request) {
+        return ResponseEntity.ok(studentService.updateStudent(id, request));
+    }
+
+    @GetMapping("/search")
+    @PreAuthorize("hasAnyAuthority('REGISTRAR', 'SYSTEM_ADMIN', 'DEPARTMENT_HEAD', 'INSTRUCTOR')")
+    @Operation(summary = "Search for students by name or ID")
+    public ResponseEntity<Page<StudentResponse>> searchStudents(
+            @RequestParam String query,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<StudentResponse> students = studentService.searchStudents(query, pageable);
+        return ResponseEntity.ok(students);
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAnyAuthority('REGISTRAR', 'SYSTEM_ADMIN')")
+    @Operation(summary = "Get all students or Search", description = "Pass 'search' param to filter by name, ID, or email.")
+    public ResponseEntity<Page<StudentResponse>> getAllStudents(
+            @RequestParam(required = false) String search,
+            Pageable pageable) {
+        return ResponseEntity.ok(studentService.getAllStudents(search, pageable));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('REGISTRAR', 'SYSTEM_ADMIN')")
+    public ResponseEntity<StudentResponse> getStudent(@PathVariable Integer id) {
+        return ResponseEntity.ok(studentService.getStudentById(id));
+    }
+
+    @PostMapping("/promote")
+    @PreAuthorize("hasAuthority('REGISTRAR')")
+    @Operation(summary = "Batch promote students", description = "Promote all students in a specific program and year level to the next level.")
+    public ResponseEntity<String> promoteStudents(@Valid @RequestBody BatchPromoteRequest request) {
+        int count = studentService.promoteStudents(request);
+        return ResponseEntity.ok("Successfully promoted " + count + " students.");
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('REGISTRAR')")
+    public ResponseEntity<Void> deleteStudent(@PathVariable Integer id) {
+        studentService.deleteStudent(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/send-verification")
+    @PreAuthorize("hasAuthority('STUDENT')")
+    public ResponseEntity<String> sendVerification(@RequestParam String email) {
+        return ResponseEntity.ok(studentService.sendVerificationCode(email));
+    }
+
+    @PostMapping("/verify")
+    public ResponseEntity<UserResponseDTO> verifyStudent(
+            @RequestParam String email,
+            @RequestParam String otp) {
+        return ResponseEntity.ok(studentService.verifyStudent(email, otp));
+    }
+
+}

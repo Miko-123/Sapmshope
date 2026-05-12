@@ -1,6 +1,6 @@
 package com.hopesapms.app.security;
 
-import com.hopesapms.app.service.SystemSettingsService;
+import com.hopesapms.app.modules.user.service.SystemSettingsService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

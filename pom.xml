@@ -90,10 +90,16 @@
 </dependency>
 
 		<dependency>
-    <groupId>com.mysql</groupId>
-    <artifactId>mysql-connector-j</artifactId>
-    <version>8.0.33</version>
+    <groupId>org.postgresql</groupId>
+    <artifactId>postgresql</artifactId>
+    <scope>runtime</scope>
 </dependency>
+
+<dependency>
+    <groupId>com.google.genai</groupId>
+    <artifactId>google-genai</artifactId>
+    <version>1.0.0</version>
+  </dependency>
 
 <dependency>
     <groupId>org.apache.commons</groupId>
@@ -103,7 +109,7 @@
 	<dependency>
     <groupId>org.apache.poi</groupId>
     <artifactId>poi-ooxml</artifactId>
-    <version>5.2.5</version> </dependency>
+    <version>5.4.0</version> </dependency>
 
 	<dependency>
     <groupId>com.github.librepdf</groupId>

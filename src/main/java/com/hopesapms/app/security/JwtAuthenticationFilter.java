@@ -1,7 +1,7 @@
 package com.hopesapms.app.security;
 
-import com.hopesapms.app.service.CustomUserDetailsService;
-import com.hopesapms.app.util.JwtUtil;
+import com.hopesapms.app.modules.auth.service.CustomUserDetailsService;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
